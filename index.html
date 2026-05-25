@@ -3423,7 +3423,15 @@ ${fc.slice(0,5).map((d,i)=>`Day ${i+1}: High ${Math.round(d.high||0)}°F, Low ${
 
 The garden has both outdoor ground beds and container plants.
 
-Give ONE concise actionable recommendation (1-2 sentences max) for today. Focus on the most important thing the gardener should know or do. If conditions are fine, say so briefly. Start with a relevant emoji. Be specific about amounts or conditions when relevant. Do not use bullet points or lists.`;
+Priority order for your recommendation:
+1. Frost risk (low < 35°F) — warn to protect plants
+2. Rain today (≥40%) — suggest skipping watering outdoor crops
+3. Extreme heat (≥90°F) — suggest watering early, shade cloth
+4. High UV (≥8) — suggest shade cloth for leafy greens
+5. Extended dry stretch ahead — suggest extra watering
+6. All clear — say conditions look good briefly
+
+Give ONE concise actionable recommendation (1-2 sentences max). Start with a relevant emoji. Be specific. No bullet points.`;
 
       const res=await fetch("https://api.anthropic.com/v1/messages",{
         method:"POST",
@@ -3436,8 +3444,27 @@ Give ONE concise actionable recommendation (1-2 sentences max) for today. Focus 
       });
       const json=await res.json();
       const text=json?.content?.[0]?.text?.trim();
-      if(text) setWeatherRec(text);
-    }catch(e){console.warn("Weather rec failed:",e);}
+      if(text){
+        setWeatherRec(text);
+      } else {
+        throw new Error('No text in response');
+      }
+    }catch(e){
+      console.warn("Weather rec failed, using fallback:",e);
+      // Fallback to hardcoded logic when API unavailable
+      const t=data.today;
+      const fc=data.forecast||[];
+      const dryDays=(()=>{let d=0;for(const f of fc){if((f.precipProb||0)<30)d++;else break;}return d;})();
+      let rec=null;
+      if(t.low<=35) rec=`🧊 Frost risk tonight (${Math.round(t.low)}°F) — bring tender seedlings inside`;
+      else if(t.high>=90&&t.uvIndex>=7) rec=`🌡 Heat & high UV today (${Math.round(t.high)}°F, UV ${Math.round(t.uvIndex)}) — consider shade cloth for leafy greens`;
+      else if(t.high>=90) rec=`🌡 Hot day ahead (${Math.round(t.high)}°F) — water early, avoid midday stress`;
+      else if(t.uvIndex>=8) rec=`☀️ High UV today (UV ${Math.round(t.uvIndex)}) — leafy greens may need shade`;
+      else if(t.precipProb>=40) rec=`🌧 Rain expected today (${t.precipProb}%) — skip watering outdoor crops`;
+      else if(recentRainAmt>=0.25) rec=`🌧 Recent rainfall (${recentRainAmt}") — outdoor crops are likely covered`;
+      else if(dryDays>=5) rec=`🌵 Dry stretch ahead (${dryDays} days) — outdoor crops will need manual watering`;
+      else rec=`✅ No weather alerts — conditions look good today`;
+      setWeatherRec(rec);}
     finally{setWeatherRecLoading(false);}
   };
 
