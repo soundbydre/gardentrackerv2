@@ -123,7 +123,7 @@ const db2 = {
     return data||[];
   },
   async upsertLocation(gardenId, name, outdoor, sortOrder) {
-    const {data:ex} = await sb.from('locations').select('id').eq('garden_id',gardenId).eq('name',name).single();
+    const {data:ex} = await sb.from('locations').select('id').eq('garden_id',gardenId).eq('name',name).maybeSingle();
     if(ex) {
       await sb.from('locations').update({outdoor,sort_order:sortOrder}).eq('id',ex.id);
       return ex.id;
@@ -135,8 +135,12 @@ const db2 = {
     await sb.from('locations').delete().eq('garden_id',gardenId).eq('name',name);
   },
   async getLocationId(gardenId, name) {
-    const {data} = await sb.from('locations').select('id').eq('garden_id',gardenId).eq('name',name).single();
+    const {data} = await sb.from('locations').select('id').eq('garden_id',gardenId).eq('name',name).maybeSingle();
     return data?.id || null;
+  },
+  async setLocationRainSync(gardenId, names, date) {
+    if(!names||!names.length) return;
+    await sb.from('locations').update({last_rain_sync:date}).eq('garden_id',gardenId).in('name',names);
   },
 
   // ── Crops ─────────────────────────────────────────────────────
@@ -165,7 +169,7 @@ const db2 = {
         stage:c.stage, archived:c.archived, finalNote:c.final_note,
         successionDays:c.succession_days, inContainer:c.in_container,
         containerSize:c.container_size, color:c.color,
-        stageHistory:(shMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(s=>({stage:s.stage,date:s.date,inContainer:s.in_container,containerSize:s.container_size,location_id:s.location_id,transplant:s.is_transplant})),
+        stageHistory:(shMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(s=>({_id:s.id,stage:s.stage,date:s.date,inContainer:s.in_container,containerSize:s.container_size,location_id:s.location_id,transplant:s.is_transplant})),
         waterLog:(wlMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(w=>({_id:w.id,date:w.date,amount:w.amount,unit:w.unit,auto:w.source==='rain',source:w.source,note:w.note})),
         feedLog:(flMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(f=>({_id:f.id,date:f.date,nutrient:f.nutrient,qty:f.qty,water:f.water})),
         harvests:(hvMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(h=>({_id:h.id,date:h.date,amount:h.amount,unit:h.unit,note:h.note})),
@@ -186,8 +190,12 @@ const db2 = {
     }).select().single();
     if(error){console.error('insertCrop error code:',error.code,'message:',error.message,'details:',error.details,'hint:',error.hint);return null;}
     // Initial stage history
-    if(c.seedDate) await sb.from('stage_history').insert({crop_id:data.id,stage:c.stage||'Seed',date:c.seedDate,in_container:c.inContainer||false,container_size:c.containerSize||null,location_id:locationId||null});
-    return data.id;
+    let stageRow=null;
+    if(c.seedDate){
+      const {data:sr} = await sb.from('stage_history').insert({crop_id:data.id,stage:c.stage||'Seed',date:c.seedDate,in_container:c.inContainer||false,container_size:c.containerSize||null,location_id:locationId||null}).select().single();
+      stageRow=sr;
+    }
+    return {id:data.id, stageRow};
   },
   async updateCrop(cropId, updates) {
     const row={updated_at:new Date().toISOString()};
@@ -216,6 +224,9 @@ const db2 = {
   async addStageHistory(cropId, stage, date, extra={}) {
     const {data} = await sb.from('stage_history').insert({crop_id:cropId,stage,date,in_container:extra.inContainer||false,container_size:extra.containerSize||null,location_id:extra.locationId||null,is_transplant:extra.transplant||false}).select().single();
     return data;
+  },
+  async deleteStageHistory(id) {
+    await sb.from('stage_history').delete().eq('id',id);
   },
 
   // ── Water Log ─────────────────────────────────────────────────
@@ -314,7 +325,7 @@ async function dbLoad(userId) {
     ]);
     const locationNames = locs.map(l=>l.name);
     const locationMeta = {};
-    locs.forEach(l=>{ locationMeta[l.name]={outdoor:l.outdoor,lastRainSync:null}; });
+    locs.forEach(l=>{ locationMeta[l.name]={outdoor:l.outdoor,lastRainSync:l.last_rain_sync||null}; });
     // Backfill location name from location_id for crops that are missing it
     const locById = {};
     locs.forEach(l=>{ locById[l.id]=l.name; });
@@ -704,7 +715,7 @@ function AuthScreen({onAuth}) {
 }
 
 // ── Onboarding Wizard ───────────────────────────────────────────
-function Wizard({onComplete}) {
+function Wizard({onComplete,onImportV1FromWizard}) {
   const [step,setStep]=useState(0);
   const [gardenName,setGardenName]=useState("");
   const [zip,setZip]=useState("");
@@ -722,7 +733,24 @@ function Wizard({onComplete}) {
       <div style={{fontSize:"3.5rem"}}>🌿</div>
       <div style={{fontFamily:F.serif,fontSize:"2rem",color:"white",fontWeight:700,lineHeight:1.2}}>Welcome to<br/>your garden.</div>
       <div style={{fontSize:"0.95rem",color:"rgba(255,255,255,0.45)",lineHeight:1.6,maxWidth:300}}>Let's take a minute to set things up. It only takes a moment.</div>
-      <button onClick={()=>setStep(1)} style={{background:C.green,color:"white",border:"none",borderRadius:"14px",padding:"16px 40px",fontSize:"1rem",fontWeight:700,cursor:"pointer",marginTop:8}}>Get Started</button>
+      <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%",maxWidth:320,marginTop:8}}>
+        <button onClick={()=>setStep(1)} style={{background:C.green,color:"white",border:"none",borderRadius:"14px",padding:"16px 40px",fontSize:"1rem",fontWeight:700,cursor:"pointer"}}>Get Started</button>
+        <label style={{display:"block",background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.15)",borderRadius:"14px",padding:"16px",fontSize:"0.95rem",fontWeight:600,color:"rgba(255,255,255,0.6)",cursor:"pointer",textAlign:"center"}}>
+          ⬆ Start from a backup
+          <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{
+            const f=e.target.files[0];if(!f)return;
+            const r=new FileReader();
+            r.onload=ev=>{
+              try{
+                const d=JSON.parse(ev.target.result);
+                if(d.crops&&d.settings&&d.locations) onImportV1FromWizard(d);
+                else alert("This doesn't look like a V1 backup file.");
+              }catch(err){alert("Invalid file — couldn't parse JSON.");}
+            };
+            r.readAsText(f);e.target.value="";
+          }}/>
+        </label>
+      </div>
     </div>,
     <div key={1} style={{padding:"32px 28px",display:"flex",flexDirection:"column",gap:20}}>
       <div>
@@ -809,7 +837,7 @@ function Wizard({onComplete}) {
 
 
 
-function SettingsPanel({show,settings,locations,locationMeta,crops,user,syncing,onSave,onSignOut,onClose,onExport,onImport}) {
+function SettingsPanel({show,settings,locations,locationMeta,crops,user,syncing,onSave,onSignOut,onClose,onExport,onImport,onImportV1}) {
   const [name,setName]=useState(settings?.gardenName||"");
   const [zip,setZip]=useState(settings?.zip||"");
   const [zone,setZone]=useState(settings?.zone||"");
@@ -977,8 +1005,8 @@ function SettingsPanel({show,settings,locations,locationMeta,crops,user,syncing,
             {saved?"Saved!":"Save Settings"}
           </button>
 
-          {/* Backup / Restore — admin only */}
-          {user&&user.id==="2aa8f103-29bc-4444-b114-9eefd74fd002"&&(
+          {/* Backup / Restore */}
+          {user&&(
           <div style={{background:C.bgCard,borderRadius:"14px",padding:"16px",border:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(232,245,233,0.4)",marginBottom:12}}>Data Backup</div>
             <div style={{display:"flex",gap:10,marginBottom:10}}>
@@ -988,6 +1016,10 @@ function SettingsPanel({show,settings,locations,locationMeta,crops,user,syncing,
                 <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.crops&&d.settings)onImport(d);}catch(err){alert("Invalid backup file");}};r.readAsText(f);e.target.value="";}}/>
               </label>
             </div>
+            <label style={{display:"block",width:"100%",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.2)",borderRadius:"10px",padding:"10px",fontSize:"0.82rem",fontWeight:700,color:"#fbbf24",cursor:"pointer",textAlign:"center",marginBottom:8}}>
+              ⬆ Import from V1 (Convert)
+              <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d.crops&&d.settings&&d.locations)onImportV1(d);else alert("This doesn't look like a V1 backup file.");}catch(err){alert("Invalid file — couldn't parse JSON.");}};r.readAsText(f);e.target.value="";}}/>
+            </label>
             <button onClick={()=>{
               try{
                 const snap=localStorage.getItem(`garden:snapshot:${user.id}`);
@@ -1344,7 +1376,7 @@ function DarkConfirmSheet({show,onClose,title,message,confirmLabel,danger,onConf
   );
 }
 
-function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,onMarkDone,onMarkLost,onDeleteCrop,onChangeStage,onAddNote,onEditNote,onDeleteNote,onLogHarvest,onEditHarvest,onDeleteHarvest,onAddFeed,onEditFeed,onDeleteFeed,onDeleteWater,onUpdateSchedule,onDeleteSchedule,onAddNutrient,onTransplant,onWater,autoShowFeed}) {
+function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,onMarkDone,onMarkLost,onDeleteCrop,onChangeStage,onDeleteStageHistory,onAddNote,onEditNote,onDeleteNote,onLogHarvest,onEditHarvest,onDeleteHarvest,onAddFeed,onEditFeed,onDeleteFeed,onDeleteWater,onUpdateSchedule,onDeleteSchedule,onAddNutrient,onTransplant,onWater,autoShowFeed}) {
   const [tab,setTab]=useState("overview");
   const [noteText,setNoteText]=useState("");
   const [editingNoteIdx,setEditingNoteIdx]=useState(null);
@@ -1369,6 +1401,7 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
   const [editingSchedKey,setEditingSchedKey]=useState(null);
   const [editSchedData,setEditSchedData]=useState({nutrient:"",days:"",qty:"",unit:"tbsp",water:"",waterUnit:"gal"});
   const [confirmDeleteSched,setConfirmDeleteSched]=useState(null);
+  const [confirmDeleteStage,setConfirmDeleteStage]=useState(null);
   const [toast,setToast]=useState(null);
   const [wateredToday,setWateredToday]=useState(false);
 
@@ -1552,6 +1585,7 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
                           <div style={{flex:1,fontSize:"0.82rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>{s.stage}</div>
                           <div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.3)"}}>{fmtDate(s.date)}</div>
                           <div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.25)",minWidth:30,textAlign:"right"}}>{days}d</div>
+                          {s._id&&<button onClick={e=>{e.stopPropagation();setConfirmDeleteStage(s);}} style={{background:"none",border:"none",color:"rgba(239,68,68,0.55)",fontSize:"1rem",lineHeight:1,cursor:"pointer",padding:"0 2px",flexShrink:0}}>×</button>}
                         </div>
                       );
                     })}
@@ -1815,6 +1849,7 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
       <DarkConfirmSheet show={confirmLost} onClose={()=>{setConfirmLost(false);setFinalNote("");}} title="Mark as Lost?" message={"This will archive "+crop.name+(crop.variety?" ("+crop.variety+")":"")+" as a loss."} confirmLabel="Mark Lost" danger={true} onConfirm={()=>{onMarkLost({...crop,stage:"Lost",finalNote:finalNote.trim()||null});setFinalNote("");}} extraContent={<textarea value={finalNote} onChange={e=>setFinalNote(e.target.value)} placeholder="What happened? (optional) — disease, pests, weather, timing..." style={{width:"100%",background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"10px",padding:"10px 12px",fontSize:"0.85rem",color:"white",outline:"none",resize:"none",minHeight:80,marginTop:4,boxSizing:"border-box",fontFamily:"inherit"}}/>}/>
       <DarkConfirmSheet show={confirmDelete} onClose={()=>setConfirmDelete(false)} title="Delete crop?" message={`${crop.name}${crop.variety?` (${crop.variety})`:""} will be permanently deleted. This cannot be undone.`} confirmLabel="Delete" danger={true} onConfirm={()=>onDeleteCrop(crop.id)}/>
       <DarkConfirmSheet show={deleteNoteIdx!==null} onClose={()=>setDeleteNoteIdx(null)} title="Delete entry?" message="This log entry will be permanently deleted." confirmLabel="Delete" danger={true} onConfirm={()=>{onDeleteNote(crop.id,deleteNoteIdx);setDeleteNoteIdx(null);}}/>
+      <DarkConfirmSheet show={confirmDeleteStage!==null} onClose={()=>setConfirmDeleteStage(null)} title="Delete stage entry?" message={confirmDeleteStage?`Remove the "${confirmDeleteStage.stage}" entry from this crop's timeline? The crop's current stage will revert to the most recent remaining entry.`:""} confirmLabel="Delete" danger={true} onConfirm={()=>{onDeleteStageHistory(crop.id,confirmDeleteStage);setConfirmDeleteStage(null);}}/>
       <DarkConfirmSheet show={deleteFeedIdx!==null} onClose={()=>setDeleteFeedIdx(null)} title="Delete feed entry?" message="This feed log entry will be permanently deleted." confirmLabel="Delete" danger={true} onConfirm={()=>{onDeleteFeed(crop.id,deleteFeedIdx);setDeleteFeedIdx(null);}}/>
       <DarkConfirmSheet show={deleteWaterIdx!==null} onClose={()=>setDeleteWaterIdx(null)} title={deleteWaterIdx!==null&&(crop.waterLog||[])[deleteWaterIdx]?.source==="rain"?"Delete rainfall entry?":"Delete watering?"} message={deleteWaterIdx!==null&&(crop.waterLog||[])[deleteWaterIdx]?.source==="rain"?"This auto-logged rainfall entry will be removed from the log.":"This watering entry will be permanently deleted."} confirmLabel="Delete" danger={true} onConfirm={()=>{onDeleteWater(crop.id,deleteWaterIdx);setDeleteWaterIdx(null);}}/>
       <DarkConfirmSheet show={deleteHarvestIdx!==null} onClose={()=>setDeleteHarvestIdx(null)} title="Delete harvest?" message="This harvest entry will be permanently deleted." confirmLabel="Delete" danger={true} onConfirm={()=>{onDeleteHarvest(crop.id,deleteHarvestIdx);setDeleteHarvestIdx(null);}}/>
@@ -3323,9 +3358,20 @@ function App() {
   const [weatherRecLoading,setWeatherRecLoading]=useState(false);
 
   // ── Historical rain sync ─────────────────────────────────────
+  const rainSyncRef = useRef({running:false});
   const syncRainData=async(lat,lon,locMeta,cropList)=>{
     if(!lat||!lon) return;
     const today=todayStr();
+    // Prevent concurrent/overlapping syncs (which could write duplicate rows)
+    if(rainSyncRef.current.running) return;
+    rainSyncRef.current.running=true;
+    try {
+      await runRainSync(lat,lon,locMeta,cropList,today);
+    } finally {
+      rainSyncRef.current.running=false;
+    }
+  };
+  const runRainSync=async(lat,lon,locMeta,cropList,today)=>{
 
     const outdoorLocs=(locMeta?Object.keys(locMeta):locations).filter(loc=>locMeta?locMeta[loc]?.outdoor===true:locationMeta[loc]?.outdoor===true);
     const cropData=cropList||crops;
@@ -3364,40 +3410,55 @@ function App() {
       });
 
       if(!Object.keys(rainByDate).length){
-        // No rain in range — just update sync dates
+        // No rain in range — just update sync dates (local + DB)
         setLocationMeta(prev=>{
           const updated={...prev};
           outdoorLocs.forEach(loc=>{updated[loc]={...updated[loc],lastRainSync:today};});
           return updated;
         });
+        if(gardenId) db2.setLocationRainSync(gardenId,outdoorLocs,today);
         return;
       }
 
-      // Add rain entries to each outdoor crop's waterLog
-      const updatedCrops = [];
-      for(const c of (crops||[])) {
-        if(!outdoorLocs.includes(c.location)||c.archived){ updatedCrops.push(c); continue; }
+      // Add rain entries to each outdoor crop's waterLog.
+      // Collect DB-written entries (with real _id) keyed by crop id.
+      const additions={}; // cropId -> [entries with _id]
+      for(const c of cropData) {
+        if(!outdoorLocs.includes(c.location)||c.archived) continue;
         const existingDates=new Set((c.waterLog||[]).filter(w=>w.auto&&w.source==="rain").map(w=>w.date?.slice(0,10)));
         const outdoorStart=c.startType==="indoor"&&c.transplantDate?c.transplantDate:c.seedDate;
-        const newEntries=Object.entries(rainByDate)
+        const pending=Object.entries(rainByDate)
           .filter(([date])=>date>=outdoorStart&&!existingDates.has(date))
           .map(([date,amount])=>({date:`${date}T12:00:00`,amount,unit:"in",auto:true,source:"rain",note:`🌧 ${amount}" rainfall`}));
-        if(!newEntries.length){ updatedCrops.push(c); continue; }
-        // Write each rain entry to DB
-        for(const e of newEntries) {
-          await db2.addWater(c.id,e.date,'rain',e.amount,'in',e.note);
+        if(!pending.length) continue;
+        const written=[];
+        for(const e of pending) {
+          const row=await db2.addWater(c.id,e.date,'rain',e.amount,'in',e.note);
+          written.push({...e,_id:row?.id});
         }
-        const combined=[...(c.waterLog||[]),...newEntries].sort((a,b)=>new Date(a.date)-new Date(b.date));
-        updatedCrops.push({...c,waterLog:combined});
+        additions[c.id]=written;
       }
-      setCrops(updatedCrops);
 
-      // Update lastRainSync for all outdoor locations
+      // Merge into current state via functional updater (avoids stale closure overwrite)
+      if(Object.keys(additions).length){
+        setCrops(prev=>prev.map(c=>{
+          const add=additions[c.id];
+          if(!add) return c;
+          const have=new Set((c.waterLog||[]).filter(w=>w.auto&&w.source==="rain").map(w=>w.date?.slice(0,10)));
+          const fresh=add.filter(e=>!have.has(e.date.slice(0,10)));
+          if(!fresh.length) return c;
+          const combined=[...(c.waterLog||[]),...fresh].sort((a,b)=>new Date(a.date)-new Date(b.date));
+          return {...c,waterLog:combined};
+        }));
+      }
+
+      // Update lastRainSync for all outdoor locations (local + DB)
       setLocationMeta(prev=>{
         const updated={...prev};
         outdoorLocs.forEach(loc=>{updated[loc]={...updated[loc],lastRainSync:today};});
         return updated;
       });
+      if(gardenId) db2.setLocationRainSync(gardenId,outdoorLocs,today);
     }catch(e){console.warn("Rain sync failed:",e);}
   };
 
@@ -3633,6 +3694,131 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const gardenName=settings?.gardenName||"My Garden";
   const zone=settings?.zone||"";
 
+  // ── Shared V1 import logic (used from Wizard and Settings) ───
+  const runV1Import=async(data,gId,userId)=>{
+    const overlay=document.createElement("div");
+    overlay.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(14,21,14,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:Figtree,sans-serif;";
+    const titleEl=document.createElement("div");
+    titleEl.style.cssText="color:#4ade80;font-size:1.1rem;font-weight:700;";
+    titleEl.textContent="Importing V1 Data…";
+    const statusEl=document.createElement("div");
+    statusEl.style.cssText="color:rgba(232,245,233,0.7);font-size:0.85rem;max-width:280px;text-align:center;";
+    overlay.appendChild(titleEl);overlay.appendChild(statusEl);
+    document.body.appendChild(overlay);
+    const setStatus=msg=>{statusEl.textContent=msg;};
+
+    try{
+      // 1. Clear existing data for this garden
+      setStatus("Clearing existing data…");
+      const {data:existingCrops}=await sb.from('crops').select('id').eq('garden_id',gId);
+      if(existingCrops&&existingCrops.length){
+        const ids=existingCrops.map(c=>c.id);
+        await sb.from('stage_history').delete().in('crop_id',ids);
+        await sb.from('water_log').delete().in('crop_id',ids);
+        await sb.from('feed_log').delete().in('crop_id',ids);
+        await sb.from('feed_schedules').delete().in('crop_id',ids);
+        await sb.from('harvests').delete().in('crop_id',ids);
+        await sb.from('notes').delete().in('crop_id',ids);
+        await sb.from('crops').delete().eq('garden_id',gId);
+      }
+      await sb.from('todos').delete().eq('garden_id',gId);
+      await sb.from('locations').delete().eq('garden_id',gId);
+
+      // 2. Upsert locations
+      setStatus("Importing locations…");
+      const v1Locs=data.locations||[];
+      const v1LocMeta=data.locationMeta||{};
+      const locIdMap={};
+      for(let i=0;i<v1Locs.length;i++){
+        const name=v1Locs[i];
+        const outdoor=v1LocMeta[name]?.outdoor!==false;
+        const id=await db2.upsertLocation(gId,name,outdoor,i);
+        if(id) locIdMap[name]=id;
+      }
+      const freshLocs=await db2.getLocations(gId);
+      freshLocs.forEach(l=>{locIdMap[l.name]=l.id;});
+
+      // 3. Import crops + child records
+      const v1Crops=data.crops||[];
+      let done=0;
+      for(const c of v1Crops){
+        setStatus(`Importing crop ${++done} of ${v1Crops.length}: ${c.name}${c.variety?" · "+c.variety:""}`);
+        const locId=locIdMap[c.location]||null;
+        const {data:cropRow,error:cropErr}=await sb.from('crops').insert({
+          garden_id:gId,location_id:locId,location_name:c.location||null,
+          name:c.name,variety:c.variety||null,stage:c.stage||"Seed",
+          seed_date:c.seedDate||null,transplant_date:c.transplantDate||null,
+          start_type:c.startType||"direct",in_container:c.inContainer||false,
+          container_size:c.containerSize||null,
+          days_to_maturity:c.daysToMaturity?Number(c.daysToMaturity):null,
+          succession_days:c.successionDays?Number(c.successionDays):null,
+          color:c.color||null,archived:c.archived||false,final_note:c.finalNote||null,
+        }).select().single();
+        if(cropErr||!cropRow){console.error("crop insert error",cropErr);continue;}
+        const cropId=cropRow.id;
+
+        // Stage history
+        const sh=c.stageHistory||[];
+        for(const s of sh){
+          await sb.from('stage_history').insert({crop_id:cropId,stage:s.stage,date:s.date||c.seedDate,in_container:c.inContainer||false,container_size:c.containerSize||null,location_id:locId,is_transplant:false});
+        }
+        if(sh.length===0&&c.seedDate){
+          await sb.from('stage_history').insert({crop_id:cropId,stage:c.stage||"Seed",date:c.seedDate,in_container:c.inContainer||false,container_size:c.containerSize||null,location_id:locId,is_transplant:false});
+        }
+
+        // Water log
+        for(const w of (c.waterLog||[])){
+          await sb.from('water_log').insert({crop_id:cropId,date:w.date||new Date().toISOString(),source:w.source||(w.auto?"rain":"manual"),amount:w.amount||null,unit:w.unit||null,note:w.note||null});
+        }
+
+        // Feed log
+        for(const f of (c.feedLog||[])){
+          await sb.from('feed_log').insert({crop_id:cropId,date:f.date||new Date().toISOString(),nutrient:f.nutrient||null,qty:f.qty||null,water:f.water||null});
+        }
+
+        // Feed schedules
+        for(const [nutrient,sched] of Object.entries(c.feedSchedules||{})){
+          const days=typeof sched==="number"?sched:(sched?.days||null);
+          await sb.from('feed_schedules').upsert({crop_id:cropId,nutrient,interval_days:days,qty:sched?.qty||null,unit:sched?.unit||null,water_qty:sched?.water||null,water_unit:sched?.waterUnit||null},{onConflict:'crop_id,nutrient'});
+        }
+
+        // Harvests
+        for(const h of (c.harvests||[])){
+          await sb.from('harvests').insert({crop_id:cropId,date:h.date||new Date().toISOString(),amount:h.amount||null,unit:h.unit||null,note:h.note||null});
+        }
+
+        // Notes
+        for(const n of (c.notes||[])){
+          await sb.from('notes').insert({crop_id:cropId,date:n.date||new Date().toISOString(),text:n.text||"",auto:n.auto||false});
+        }
+      }
+
+      // 4. Todos
+      setStatus("Importing todos…");
+      for(const t of (data.todos||[])){
+        await sb.from('todos').insert({garden_id:gId,text:t.text,due_date:t.due||null,done:t.done||false});
+      }
+
+      // 5. Preferences
+      setStatus("Saving preferences…");
+      const prefUpdates={};
+      if(data.nutrients?.length) prefUpdates.nutrients=data.nutrients;
+      if(data.cropNames?.length) prefUpdates.crop_names=data.cropNames;
+      if(data.varieties?.length) prefUpdates.varieties=data.varieties;
+      if(data.containerSizes?.length) prefUpdates.container_sizes=data.containerSizes;
+      if(Object.keys(prefUpdates).length){
+        await sb.from('user_preferences').upsert({user_id:userId,...prefUpdates,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+      }
+
+      setStatus("Done! Reloading…");
+      setTimeout(()=>{document.body.removeChild(overlay);window.location.reload();},1200);
+    }catch(err){
+      console.error("V1 import error:",err);
+      document.body.removeChild(overlay);
+      alert("Import failed: "+err.message);
+    }
+  };
+
   if(authLoading) return <div style={{width:"100%",height:"100%",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:"2.5rem"}}>🌿</div></div>;
   if(isPasswordReset) return <PasswordResetScreen onDone={()=>{setIsPasswordReset(false);window.history.replaceState(null,"",window.location.pathname);}}/>;
   if(!user) return <AuthScreen onAuth={u=>setUser(u)}/>;
@@ -3657,6 +3843,13 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
           await db2.updatePreferences(user.id,{nutrients:DEFAULT_NUTRIENTS,crop_names:DEFAULT_CROPS,varieties:{},container_sizes:[]});
         }
       }
+    }} onImportV1FromWizard={async(data)=>{
+      if(!user) return;
+      // Create garden from V1 settings
+      const s=data.settings||{};
+      const g=await db2.createGarden(user.id,s.gardenName||"My Garden",s.zone||"",s.zip||"");
+      if(!g){alert("Failed to create garden. Please try again.");return;}
+      runV1Import(data,g.id,user.id);
     }}/>;
   }
 
@@ -3685,12 +3878,15 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
       if(gardenId){
         const tempId=crop.id; // temp ID generated by form (uid("crop"))
         const locId=await db2.getLocationId(gardenId,crop.location);
-        const newId=await db2.insertCrop(gardenId,locId,crop);
-        if(newId){
-          const newCrop={...crop,id:newId,location:crop.location,notes:[],harvests:[],feedLog:[],feedSchedules:{},stageHistory:[{stage:crop.stage||"Seed",date:crop.seedDate||t0,inContainer:crop.inContainer||false,containerSize:crop.containerSize||null}],waterLog:[]};
-            setCrops(cs=>[...cs.filter(x=>x.id!==tempId&&x.id!==newId),newCrop]);
+        const result=await db2.insertCrop(gardenId,locId,crop);
+        if(result&&result.id){
+          const initialStage={stage:crop.stage||"Seed",date:crop.seedDate||t0,inContainer:crop.inContainer||false,containerSize:crop.containerSize||null,location_id:locId||null,_id:result.stageRow?.id};
+          const newCrop={...crop,id:result.id,location:crop.location,notes:[],harvests:[],feedLog:[],feedSchedules:{},stageHistory:crop.seedDate?[initialStage]:[],waterLog:[]};
+          setCrops(cs=>[...cs.filter(x=>x.id!==tempId&&x.id!==result.id),newCrop]);
         } else {
-          }
+          alert("Couldn't save the crop — there was a database error. Please try again.");
+          return;
+        }
       }
     } else {
       // Edit existing crop — update DB
@@ -3749,8 +3945,9 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const deleteNote=async(cropId,noteIdx)=>{
     const note=crops.find(c=>c.id===cropId)?.notes?.[noteIdx];
     if(note?._id) await db2.deleteNote(note._id);
-    setCrops(cs=>cs.map(c=>c.id!==cropId?c:{...c,notes:c.notes.filter((_,i)=>i!==noteIdx)}));
-    setSelCrop(p=>!p||p.id!==cropId?p:{...p,notes:p.notes.filter((_,i)=>i!==noteIdx)});
+    const flt=note?._id?(x=>x._id!==note._id):((_,i)=>i!==noteIdx);
+    setCrops(cs=>cs.map(c=>c.id!==cropId?c:{...c,notes:c.notes.filter(flt)}));
+    setSelCrop(p=>!p||p.id!==cropId?p:{...p,notes:p.notes.filter(flt)});
   };
   const logHarvest=async(id,obj)=>{
     const row=await db2.addHarvest(id,obj.date||ts(),obj.amount,obj.unit,obj.note||null);
@@ -3767,8 +3964,9 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const deleteHarvest=async(cropId,hIdx)=>{
     const h=crops.find(c=>c.id===cropId)?.harvests?.[hIdx];
     if(h?._id) await db2.deleteHarvest(h._id);
-    setCrops(cs=>cs.map(c=>c.id===cropId?{...c,harvests:c.harvests.filter((_,i)=>i!==hIdx)}:c));
-    setSelCrop(p=>p?.id===cropId?{...p,harvests:p.harvests.filter((_,i)=>i!==hIdx)}:p);
+    const flt=h?._id?(x=>x._id!==h._id):((_,i)=>i!==hIdx);
+    setCrops(cs=>cs.map(c=>c.id===cropId?{...c,harvests:c.harvests.filter(flt)}:c));
+    setSelCrop(p=>p?.id===cropId?{...p,harvests:p.harvests.filter(flt)}:p);
   };
   const restoreCrop=async(id)=>{
     const c=crops.find(x=>x.id===id);
@@ -3799,14 +3997,16 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const deleteFeed=async(cropId,fIdx)=>{
     const f=crops.find(c=>c.id===cropId)?.feedLog?.[fIdx];
     if(f?._id) await db2.deleteFeed(f._id);
-    setCrops(cs=>cs.map(c=>c.id===cropId?{...c,feedLog:(c.feedLog||[]).filter((_,i)=>i!==fIdx)}:c));
-    setSelCrop(p=>p?.id===cropId?{...p,feedLog:(p.feedLog||[]).filter((_,i)=>i!==fIdx)}:p);
+    const flt=f?._id?(x=>x._id!==f._id):((_,i)=>i!==fIdx);
+    setCrops(cs=>cs.map(c=>c.id===cropId?{...c,feedLog:(c.feedLog||[]).filter(flt)}:c));
+    setSelCrop(p=>p?.id===cropId?{...p,feedLog:(p.feedLog||[]).filter(flt)}:p);
   };
   const deleteWater=async(cropId,wIdx)=>{
     const w=crops.find(c=>c.id===cropId)?.waterLog?.[wIdx];
     if(w?._id) await db2.deleteWater(w._id);
-    setCrops(cs=>cs.map(c=>c.id===cropId?{...c,waterLog:(c.waterLog||[]).filter((_,i)=>i!==wIdx)}:c));
-    setSelCrop(p=>p?.id===cropId?{...p,waterLog:(p.waterLog||[]).filter((_,i)=>i!==wIdx)}:p);
+    const flt=w?._id?(x=>x._id!==w._id):((_,i)=>i!==wIdx);
+    setCrops(cs=>cs.map(c=>c.id===cropId?{...c,waterLog:(c.waterLog||[]).filter(flt)}:c));
+    setSelCrop(p=>p?.id===cropId?{...p,waterLog:(p.waterLog||[]).filter(flt)}:p);
   };
   const waterCrop=async(id)=>{
     const row=await db2.addWater(id,ts(),'manual');
@@ -3816,14 +4016,15 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   };
   const waterAll=async(ids)=>{
     const now=ts();
-    await Promise.all(ids.map(id=>db2.addWater(id,now,'manual')));
-    setCrops(cs=>cs.map(c=>ids.includes(c.id)?{...c,waterLog:[...(c.waterLog||[]),{date:now}]}:c));
+    const rows=await Promise.all(ids.map(id=>db2.addWater(id,now,'manual')));
+    const idToRow={};ids.forEach((id,i)=>{idToRow[id]=rows[i];});
+    setCrops(cs=>cs.map(c=>ids.includes(c.id)?{...c,waterLog:[...(c.waterLog||[]),{date:idToRow[c.id]?.date||now,_id:idToRow[c.id]?.id}]}:c));
   };
   const feedAll=async(ids,nutrient,qty,water,date)=>{
     const d=date||ts();
-    await Promise.all(ids.map(id=>db2.addFeed(id,d,nutrient,qty||null,water||null)));
-    const entry={date:d,nutrient,qty:qty||null,water:water||null};
-    setCrops(cs=>cs.map(c=>ids.includes(c.id)?{...c,feedLog:[...(c.feedLog||[]),entry]}:c));
+    const rows=await Promise.all(ids.map(id=>db2.addFeed(id,d,nutrient,qty||null,water||null)));
+    const idToRow={};ids.forEach((id,i)=>{idToRow[id]=rows[i];});
+    setCrops(cs=>cs.map(c=>ids.includes(c.id)?{...c,feedLog:[...(c.feedLog||[]),{date:idToRow[c.id]?.date||d,nutrient,qty:qty||null,water:water||null,_id:idToRow[c.id]?.id}]}:c));
   };
   const transplantCrop=async(id,toLoc,date,inContainer,containerSize,newLocs)=>{
     if(newLocs){
@@ -3835,10 +4036,10 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
     const now=ts();
     const locId=gardenId?await db2.getLocationId(gardenId,toLoc):null;
     await db2.updateCrop(id,{location:toLoc,location_id:locId,transplantDate:date,inContainer,containerSize:containerSize||""});
-    await db2.addStageHistory(id,crop?.stage||"Seedling",date,{inContainer,containerSize:containerSize||null,locationId:locId,transplant:true});
-    await db2.addNote(id,now,noteText,true);
-    const transplantEntry={stage:crop?.stage||"Seedling",date,location:toLoc,inContainer,containerSize:containerSize||null,transplant:true};
-    const note={date:now,text:noteText,auto:true};
+    const shRow=await db2.addStageHistory(id,crop?.stage||"Seedling",date,{inContainer,containerSize:containerSize||null,locationId:locId,transplant:true});
+    const noteRow=await db2.addNote(id,now,noteText,true);
+    const transplantEntry={_id:shRow?.id,stage:crop?.stage||"Seedling",date,location_id:locId,inContainer,containerSize:containerSize||null,transplant:true};
+    const note={date:now,text:noteText,auto:true,_id:noteRow?.id};
     setCrops(cs=>cs.map(c=>{if(c.id!==id)return c;const sh=[...(c.stageHistory||[]),transplantEntry];return{...c,location:toLoc,transplantDate:date,inContainer,containerSize:containerSize||"",stageHistory:sh,notes:[...c.notes,note]};}));
     setSelCrop(p=>{if(!p||p.id!==id)return p;const sh=[...(p.stageHistory||[]),transplantEntry];return{...p,location:toLoc,transplantDate:date,inContainer,containerSize:containerSize||"",stageHistory:sh,notes:[...p.notes,note]};});
   };
@@ -3848,12 +4049,44 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
     const noteText=isGermination?"Seed germinated 🌱":`Stage changed to ${stage}`;
     const crop=crops.find(c=>c.id===id);
     await db2.updateCrop(id,{stage});
-    await db2.addStageHistory(id,stage,stageDate,{inContainer:crop?.inContainer||false,containerSize:crop?.containerSize||null});
-    await db2.addNote(id,stageDate+"T12:00:00",noteText,true);
-    const sh={stage,date:stageDate,inContainer:crop?.inContainer||false,containerSize:crop?.containerSize||null};
-    const note={date:stageDate+"T12:00:00",text:noteText,auto:true};
+    const shRow=await db2.addStageHistory(id,stage,stageDate,{inContainer:crop?.inContainer||false,containerSize:crop?.containerSize||null});
+    const noteRow=await db2.addNote(id,stageDate+"T12:00:00",noteText,true);
+    const sh={_id:shRow?.id,stage,date:stageDate,inContainer:crop?.inContainer||false,containerSize:crop?.containerSize||null};
+    const note={date:stageDate+"T12:00:00",text:noteText,auto:true,_id:noteRow?.id};
     setCrops(cs=>cs.map(c=>{if(c.id!==id)return c;return{...c,stage,stageHistory:[...(c.stageHistory||[]),sh],notes:[...c.notes,note]};}));
     setSelCrop(p=>{if(!p||p.id!==id)return p;return{...p,stage,stageHistory:[...(p.stageHistory||[]),sh],notes:[...p.notes,note]};});
+  };
+  const deleteStageHistory=async(cropId,entry)=>{
+    const entryId=entry?._id;
+    if(!entryId) return; // can't delete legacy entry without _id
+    await db2.deleteStageHistory(entryId);
+
+    // Find the matching auto-note to remove alongside the stage entry.
+    // Auto-notes share the same calendar day and a predictable text prefix.
+    const crop=crops.find(c=>c.id===cropId);
+    const sameDay=(a,b)=>String(a).slice(0,10)===String(b).slice(0,10);
+    let matchPrefixes;
+    if(entry.transplant) matchPrefixes=["Transplanted from"];
+    else if(entry.stage==="Seedling") matchPrefixes=["Seed germinated","Stage changed to Seedling"];
+    else matchPrefixes=[`Stage changed to ${entry.stage}`];
+    const noteToDelete=(crop?.notes||[]).find(n=>n.auto&&sameDay(n.date,entry.date)&&matchPrefixes.some(p=>n.text?.startsWith(p)));
+    if(noteToDelete?._id) await db2.deleteNote(noteToDelete._id);
+
+    const shFlt=s=>s._id!==entryId;
+    const ntFlt=noteToDelete?(n=>n!==noteToDelete&&n._id!==noteToDelete._id):(()=>true);
+    setCrops(cs=>cs.map(c=>{
+      if(c.id!==cropId) return c;
+      const nsh=(c.stageHistory||[]).filter(shFlt);
+      const newStage=nsh.length?nsh[nsh.length-1].stage:c.stage;
+      if(newStage!==c.stage) db2.updateCrop(cropId,{stage:newStage});
+      return {...c,stageHistory:nsh,stage:newStage,notes:(c.notes||[]).filter(ntFlt)};
+    }));
+    setSelCrop(p=>{
+      if(!p||p.id!==cropId) return p;
+      const nsh=(p.stageHistory||[]).filter(shFlt);
+      const newStage=nsh.length?nsh[nsh.length-1].stage:p.stage;
+      return {...p,stageHistory:nsh,stage:newStage,notes:(p.notes||[]).filter(ntFlt)};
+    });
   };
   const addNutrient=async(n)=>{
     if(nutrients.includes(n)) return;
@@ -4139,6 +4372,7 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
         onMarkLost={c=>{saveCrop({...c,stage:"Lost",archived:true});setView("dashboard");setSelCrop(null);}}
         onDeleteCrop={async id=>{await db2.deleteCrop(id);setCrops(cs=>cs.filter(c=>c.id!==id));setView("dashboard");setSelCrop(null);}}
         onChangeStage={changeStage}
+        onDeleteStageHistory={deleteStageHistory}
         onAddNote={addNote} onEditNote={editNote} onDeleteNote={deleteNote}
         onLogHarvest={logHarvest} onEditHarvest={editHarvest} onDeleteHarvest={deleteHarvest}
         onAddFeed={logFeed} onEditFeed={editFeed} onDeleteFeed={deleteFeed} onDeleteWater={deleteWater} onAddNutrient={addNutrient}
@@ -4258,9 +4492,14 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
           URL.revokeObjectURL(url);
         }}
         onImport={async(data)=>{
-          if(!window.confirm("This will replace ALL your current garden data with the backup. Are you sure?")) return;
-          // v1 import — reload from server after import
-          alert("Import from v1 backup is coming soon in v2. For now, use the Add Crop form to re-enter your data.");
+          if(!window.confirm(`Restore backup with ${data.crops?.length||0} crops?\n\nThis will REPLACE all current crops, locations, and todos. This cannot be undone.`)) return;
+          if(!gardenId){alert("No active garden found.");return;}
+          runV1Import(data,gardenId,user.id);
+        }}
+        onImportV1={async(data)=>{
+          if(!window.confirm(`Import ${data.crops?.length||0} crops from V1 backup?\n\nThis will REPLACE all current crops, locations, and todos. This cannot be undone.`)) return;
+          if(!gardenId){alert("No active garden found.");return;}
+          runV1Import(data,gardenId,user.id);
         }}/>
     </div>
   );
