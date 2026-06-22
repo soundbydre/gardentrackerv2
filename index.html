@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -486,9 +487,19 @@ const cropAccent = (nameOrCrop) => {
 // Parse any date string - handles both YYYY-MM-DD and full ISO timestamps
 const parseDate = s => {
   if(!s) return null;
-  // Full ISO timestamp - parse directly
-  if(s.includes('T')) return new Date(s);
-  // YYYY-MM-DD - parse as LOCAL midnight to avoid UTC off-by-one
+  if(s.includes('T')) {
+    // Naive timestamp (no Z / no +hh:mm offset) -> parse as LOCAL, not UTC,
+    // so the calendar date and time aren't shifted by the viewer's offset.
+    const hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s);
+    if(!hasZone) {
+      const [datePart,timePart='00:00:00'] = s.split('T');
+      const [y,m,d] = datePart.split('-').map(Number);
+      const [hh=0,mm=0,ss=0] = timePart.split(':').map(Number);
+      return new Date(y,m-1,d,hh,mm,ss);
+    }
+    return new Date(s); // has explicit zone (e.g. ts() output) -> trust it
+  }
+  // YYYY-MM-DD -> parse as LOCAL midnight to avoid UTC off-by-one
   const [y,m,d]=s.split('-').map(Number);
   return new Date(y,m-1,d);
 };
@@ -497,7 +508,7 @@ const daysAgo   = d => { if(!d) return null; const diff=new Date().setHours(0,0,
 const daysUntil = d => { if(!d) return null; const diff=parseDate(d).setHours(0,0,0,0)-new Date().setHours(0,0,0,0); return Math.ceil(diff/864e5); };
 const weeksAgo  = d => { if(!d) return null; return Math.floor(daysAgo(d)/7); };
 const fmtDate   = d => { if(!d) return "-"; const p=parseDate(d); if(!p||isNaN(p)) return "-"; return p.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); };
-const fmtTs     = iso => { if(!iso) return "-"; const d=new Date(iso); return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})+" · "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); };
+const fmtTs     = iso => { if(!iso) return "-"; const d=parseDate(iso); if(!d||isNaN(d)) return "-"; return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})+" · "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); };
 const fmtShort  = d => { if(!d) return "-"; const p=parseDate(d); if(!p||isNaN(p)) return "-"; return p.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); };
 const fmtMon    = d => { if(!d) return "-"; const p=parseDate(d); if(!p||isNaN(p)) return "-"; return p.toLocaleDateString("en-US",{month:"short",day:"numeric"}); };
 const succDate  = (b,n) => { if(!b||!n) return null; const d=parseDate(b); d.setDate(d.getDate()+Number(n)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
@@ -1723,10 +1734,10 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <span style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:typeLabelColor}}>{typeLabel}</span>
                     <div style={{display:"flex",alignItems:"center",gap:2}}>
-                      <span style={{fontSize:"0.68rem",color:"rgba(232,245,233,0.25)",marginRight:4}}>{isLifecycle?fmtDate(entry.date):fmtTs(entry.date)}</span>
+                      <span style={{fontSize:"0.68rem",color:"rgba(232,245,233,0.25)",marginRight:4}}>{(isLifecycle||isRain)?fmtDate(entry.date):fmtTs(entry.date)}</span>
                       {isNote&&!isEditingNote&&<>{actionBtn("Edit","rgba(232,245,233,0.4)",()=>{setEditingNoteIdx(entry.idx);setEditingNoteText(entry.data.text);})}{actionBtn("Delete","#ef4444",()=>setDeleteNoteIdx(entry.idx))}</>}
                       {isAuto&&actionBtn("×","rgba(232,245,233,0.25)",()=>setDeleteNoteIdx(entry.idx))}
-                      {isFeed&&!isEditingFeed&&<>{actionBtn("Edit","rgba(232,245,233,0.4)",()=>{setEditingFeedIdx(entry.idx);const qp=(entry.data.qty||"").split(" ");const d=new Date(entry.data.date);const dateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const timeStr=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;setEditFeedData({nutrient:entry.data.nutrient||"",qty:qp[0]||"",unit:qp.slice(1).join(" ")||"tbsp",water:entry.data.water||"",intervalDays:"",date:dateStr,time:timeStr});})}{actionBtn("Delete","#ef4444",()=>setDeleteFeedIdx(entry.idx))}</>}
+                      {isFeed&&!isEditingFeed&&<>{actionBtn("Edit","rgba(232,245,233,0.4)",()=>{setEditingFeedIdx(entry.idx);const qp=(entry.data.qty||"").split(" ");const d=parseDate(entry.data.date)||new Date();const dateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const timeStr=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;setEditFeedData({nutrient:entry.data.nutrient||"",qty:qp[0]||"",unit:qp.slice(1).join(" ")||"tbsp",water:entry.data.water||"",intervalDays:"",date:dateStr,time:timeStr});})}{actionBtn("Delete","#ef4444",()=>setDeleteFeedIdx(entry.idx))}</>}
                       {isWater&&!isRain&&actionBtn("Delete","#ef4444",()=>setDeleteWaterIdx(entry.idx))}
                       {isWater&&isRain&&actionBtn("Delete","rgba(239,68,68,0.6)",()=>setDeleteWaterIdx(entry.idx))}
                       {isHarvest&&actionBtn("Delete","#ef4444",()=>setDeleteHarvestIdx(entry.idx))}
@@ -2681,7 +2692,7 @@ function WeatherPanel({show,weatherData,location,loading,error,onRefresh,onSetti
   const isNight=today?.sunset?now>new Date(today.sunset):now.getHours()>=20||now.getHours()<6;
   const heroEmoji=isNight?"🌙":today?.info?.emoji||"🌡";
   const heroBg=isNight?"linear-gradient(160deg,#1e1b4b,#312e81,#0e150e)":"linear-gradient(160deg,#0c2340 0%,#0e3a5c 40%,#0e150e 100%)";
-  const fmtTime=iso=>{if(!iso)return"-";const d=new Date(iso);return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});};
+  const fmtTime=iso=>{if(!iso)return"-";const d=parseDate(iso);if(!d||isNaN(d))return"-";return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});};
   const fmtForecastDay=(dateStr,i)=>{if(i===0)return"Tomorrow";return new Date(dateStr+"T12:00:00").toLocaleDateString("en-US",{weekday:"long"});};
   const fmtDayShort=dateStr=>new Date(dateStr+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
   const allHighs=forecast.map(d=>d.high);
@@ -3312,6 +3323,8 @@ function App() {
   const [locations,setLocations] = useState([]);
   const [locationMeta,setLocationMeta] = useState({});
   const [crops,setCrops]         = useState([]);
+  const cropsRef = useRef([]);
+  useEffect(()=>{ cropsRef.current=crops; },[crops]);
   const [todos,setTodos]         = useState([]);
   const [nutrients,setNutrients] = useState(DEFAULT_NUTRIENTS);
   const [cropNames,setCropNames] = useState(DEFAULT_CROPS);
@@ -3372,9 +3385,11 @@ function App() {
     }
   };
   const runRainSync=async(lat,lon,locMeta,cropList,today)=>{
+    // Always read the freshest crops for dedup (the passed-in list can be a
+    // stale closure when this effect re-fires on locationMeta changes).
+    const cropData=cropsRef.current.length?cropsRef.current:(cropList||crops);
 
     const outdoorLocs=(locMeta?Object.keys(locMeta):locations).filter(loc=>locMeta?locMeta[loc]?.outdoor===true:locationMeta[loc]?.outdoor===true);
-    const cropData=cropList||crops;
     if(!outdoorLocs.length) return;
 
     const outdoorCrops=cropData.filter(c=>!c.archived&&outdoorLocs.includes(c.location)&&c.seedDate);
