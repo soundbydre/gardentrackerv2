@@ -169,7 +169,7 @@ const db2 = {
         transplantDate:c.transplant_date, daysToMaturity:c.days_to_maturity,
         stage:c.stage, archived:c.archived, finalNote:c.final_note,
         successionDays:c.succession_days, inContainer:c.in_container,
-        containerSize:c.container_size, color:c.color,
+        containerSize:c.container_size, color:c.color, icon:c.icon||null,
         stageHistory:(shMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(s=>({_id:s.id,stage:s.stage,date:s.date,inContainer:s.in_container,containerSize:s.container_size,location_id:s.location_id,transplant:s.is_transplant})),
         waterLog:(wlMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(w=>({_id:w.id,date:w.date,amount:w.amount,unit:w.unit,auto:w.source==='rain',source:w.source,note:w.note})),
         feedLog:(flMap[c.id]||[]).sort((a,b)=>new Date(a.date)-new Date(b.date)).map(f=>({_id:f.id,date:f.date,nutrient:f.nutrient,qty:f.qty,water:f.water})),
@@ -187,7 +187,7 @@ const db2 = {
       days_to_maturity:c.daysToMaturity||null, stage:c.stage||'Seed',
       archived:c.archived||false, final_note:c.finalNote||null,
       succession_days:c.successionDays||null, in_container:c.inContainer||false,
-      container_size:c.containerSize||null, color:c.color||null,
+      container_size:c.containerSize||null, color:c.color||null, icon:c.icon||null,
     }).select().single();
     if(error){console.error('insertCrop error code:',error.code,'message:',error.message,'details:',error.details,'hint:',error.hint);return null;}
     // Initial stage history
@@ -211,6 +211,7 @@ const db2 = {
     if('daysToMaturity' in updates) row.days_to_maturity=updates.daysToMaturity;
     if('successionDays' in updates) row.succession_days=updates.successionDays;
     if('color' in updates) row.color=updates.color;
+    if('icon' in updates) row.icon=updates.icon||null;
     if('name' in updates) row.name=updates.name;
     if('variety' in updates) row.variety=updates.variety;
     if('seedDate' in updates) row.seed_date=updates.seedDate;
@@ -234,6 +235,9 @@ const db2 = {
   async addWater(cropId, date, source='manual', amount=null, unit=null, note=null) {
     const {data} = await sb.from('water_log').insert({crop_id:cropId,date,source,amount,unit,note}).select().single();
     return data;
+  },
+  async updateWater(id, updates) {
+    await sb.from('water_log').update(updates).eq('id',id);
   },
   async deleteWater(id) {
     await sb.from('water_log').delete().eq('id',id);
@@ -473,6 +477,28 @@ const cap = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
 const titleCase = s => s ? s.trim().toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase()).replace(/\s+/g," ") : s;
 // Schedule can be a bare number (legacy) or {days, qty, unit, water, waterUnit}. Returns the interval days.
 const scheduleDays = sched => typeof sched==="number" ? sched : (sched?.days || 0);
+const cropEmoji = crop => {
+  if(crop?.icon) return crop.icon;
+  const n=(crop?.name||"").toLowerCase();
+  if(n.includes("tomato")) return "🍅";
+  if(n.includes("potato")) return "🥔";
+  if(n.includes("pepper")) return "🌶";
+  if(n.includes("cucumber")) return "🥒";
+  if(n.includes("squash")||n.includes("zucchini")) return "🥬";
+  if(n.includes("bean")||n.includes("pea")) return "🫘";
+  if(n.includes("lettuce")||n.includes("spinach")||n.includes("kale")) return "🥬";
+  if(n.includes("onion")) return "🧅";
+  if(n.includes("garlic")) return "🧄";
+  if(n.includes("carrot")||n.includes("beet")) return "🥕";
+  if(n.includes("corn")) return "🌽";
+  if(n.includes("herb")||n.includes("basil")||n.includes("mint")||n.includes("dill")) return "🌿";
+  if(n.includes("melon")||n.includes("watermelon")) return "🍉";
+  if(n.includes("broccoli")||n.includes("cauliflower")||n.includes("cabbage")) return "🥦";
+  if(n.includes("eggplant")) return "🍆";
+  if(n.includes("strawberry")) return "🍓";
+  if(n.includes("blueberry")) return "🫐";
+  return "🌱";
+};
 const cropColor = (crop) => {
   if(crop?.color) return crop.color;
   const k = Object.keys(CROP_COLORS).find(k => crop?.name?.toLowerCase().includes(k.toLowerCase()));
@@ -1066,13 +1092,15 @@ function SettingsPanel({show,settings,locations,locationMeta,crops,user,syncing,
 
 function CropFormPanel({show,initial,locations,cropNames,varieties,containerSizes,onAddContainerSize,onRemoveCropName,onRemoveVariety,onRemoveContainerSize,defaultLocation,onSave,onClose}) {
   const isEdit=!!(initial&&initial.id);
-  const blank={name:"",variety:"",location:defaultLocation||locations?.[0]||"",startType:null,seedDate:todayStr(),daysToMaturity:"",stage:"Seed",successionDays:"",inContainer:false,containerSize:"",notes:[],harvests:[],feedLog:[],feedSchedules:{},stageHistory:[],waterLog:[],archived:false};
+  const blank={name:"",variety:"",location:defaultLocation||locations?.[0]||"",startType:null,seedDate:todayStr(),daysToMaturity:"",stage:"Seed",successionDays:"",inContainer:false,containerSize:"",notes:[],harvests:[],feedLog:[],feedSchedules:{},stageHistory:[],waterLog:[],archived:false,icon:null};
   const [f,setF]=useState(blank);
   const [errors,setErrors]=useState({});
   const [showCropDrop,setShowCropDrop]=useState(false);
   const [showVarDrop,setShowVarDrop]=useState(false);
   const [saved,setSaved]=useState(false);
   const [showColorPicker,setShowColorPicker]=useState(false);
+  const [showIconPicker,setShowIconPicker]=useState(false);
+  const ICON_EMOJIS=["🍅","🥔","🌶","🥒","🫑","🥬","🫘","🧅","🧄","🥕","🌽","🥦","🥗","🍆","🌿","🪴","🌱","🌾","🍓","🍇","🍋","🫐","🍉","🍈","🌸","🌻","🌼","🌺","🪷","🌵","🎃","🫚","🫛","🌰","🍄","🪻"];
   const currentColor=f.color||(f.name?cropColor({name:f.name,color:null}):null)||"#4d7c0f";
 
   useEffect(()=>{
@@ -1157,10 +1185,16 @@ function CropFormPanel({show,initial,locations,cropNames,varieties,containerSize
             <div style={{background:`linear-gradient(135deg,${currentColor},${currentColor}cc)`,borderRadius:"16px",padding:"16px 18px"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
                 <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.14em",textTransform:"uppercase",color:"rgba(255,255,255,0.65)"}}>{f.name||"Crop"}</div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 <button onClick={()=>setShowColorPicker(true)} style={{background:"rgba(0,0,0,0.2)",border:"none",borderRadius:"8px",padding:"4px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                   <div style={{width:10,height:10,borderRadius:"50%",background:currentColor,border:"1.5px solid rgba(255,255,255,0.6)"}}/>
-                  <span style={{fontSize:"0.65rem",color:"rgba(255,255,255,0.7)",fontWeight:600}}>Pick Color</span>
+                  <span style={{fontSize:"0.65rem",color:"rgba(255,255,255,0.7)",fontWeight:600}}>Color</span>
                 </button>
+                <button onClick={()=>setShowIconPicker(true)} style={{background:"rgba(0,0,0,0.2)",border:"none",borderRadius:"8px",padding:"4px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:"0.85rem",lineHeight:1}}>{f.icon||"🌱"}</span>
+                  <span style={{fontSize:"0.65rem",color:"rgba(255,255,255,0.7)",fontWeight:600}}>Icon</span>
+                </button>
+              </div>
               </div>
               <div style={{fontFamily:F.serif,fontStyle:"italic",fontSize:"1.5rem",color:"white",lineHeight:1.2}}>{f.variety||"Variety"}</div>
               {f.location&&<div style={{fontSize:"0.72rem",color:"rgba(255,255,255,0.55)",marginTop:6}}>📍 {f.location}</div>}
@@ -1318,6 +1352,28 @@ function CropFormPanel({show,initial,locations,cropNames,varieties,containerSize
 
         </div>
       </div>
+      {showIconPicker&&(
+        <div style={{position:"fixed",inset:0,zIndex:400}} onClick={()=>setShowIconPicker(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:0,left:0,right:0,background:"#152016",borderRadius:"20px 20px 0 0",padding:"20px 20px max(28px,env(safe-area-inset-bottom))"}}>
+            <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.2)",margin:"0 auto 16px"}}/>
+            <div style={{fontSize:"0.85rem",fontWeight:700,color:"white",marginBottom:4}}>Crop Icon</div>
+            <div style={{fontSize:"0.75rem",color:"rgba(232,245,233,0.4)",marginBottom:16}}>{f.name||"Choose an icon"}</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:16}}>
+              {ICON_EMOJIS.map(emoji=>(
+                <button key={emoji} onClick={()=>{set("icon",emoji);setShowIconPicker(false);}} style={{aspectRatio:"1",borderRadius:"12px",background:f.icon===emoji?"rgba(134,239,172,0.15)":"rgba(255,255,255,0.06)",border:`1.5px solid ${f.icon===emoji?"rgba(134,239,172,0.5)":"rgba(255,255,255,0.08)"}`,cursor:"pointer",fontSize:"1.4rem",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            {f.icon&&(
+              <button onClick={()=>{set("icon",null);setShowIconPicker(false);}} style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px",fontSize:"0.82rem",color:"rgba(232,245,233,0.5)",cursor:"pointer",fontWeight:600}}>
+                Reset to default icon
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {showColorPicker&&(
         <div style={{position:"fixed",inset:0,zIndex:400}} onClick={()=>setShowColorPicker(false)}>
           <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
@@ -2204,6 +2260,89 @@ function CropCard({crop,onClick,onWater}) {
   );
 }
 
+// ── NewCropCard (redesigned dashboard flat list) ────────────────
+function NewCropCard({crop,onTap,onWater,onFeed,sortMode}) {
+  const sc=STAGE_COLORS[crop.stage]||STAGE_COLORS.Seed;
+  const acc=cropAccent(crop);
+  const emoji=cropEmoji(crop);
+  const iconBg=acc.from;
+  const manualWl=(crop.waterLog||[]).filter(w=>!w.auto||w.source!=="rain");
+  const lastWater=manualWl.length?[...manualWl].sort((a,b)=>parseDate(b.date)-parseDate(a.date))[0]:null;
+  const daysWater=lastWater?daysAgo(lastWater.date):null;
+  const fl=crop.feedLog||[];
+  const lastFeed=fl.length?[...fl].sort((a,b)=>parseDate(b.date)-parseDate(a.date))[0]:null;
+  const daysFeed=lastFeed?daysAgo(lastFeed.date):null;
+  const fs=crop.feedSchedules||{};
+  const feedOverdue=Object.entries(fs).some(([n,d])=>{
+    const l=[...fl].reverse().find(f=>f.nutrient===n);
+    return l&&daysAgo(l.date)>=scheduleDays(d);
+  });
+  const dtm=crop.daysToMaturity?Number(crop.daysToMaturity):null;
+  const sowDate=crop.seedDate?parseDate(crop.seedDate):null;
+  const daysGrown=sowDate?Math.max(0,Math.round((new Date()-sowDate)/864e5)):null;
+  const daysLeft=dtm&&daysGrown!==null?Math.max(0,dtm-daysGrown):null;
+  const waterLabel=daysWater===null?null:daysWater===0?"Today":daysWater===1?"Yesterday":`${daysWater}d ago`;
+  const feedLabel=daysFeed===null?null:feedOverdue?"Overdue":daysFeed===0?"Today":daysFeed===1?"Yesterday":`${daysFeed}d ago`;
+
+  return(
+    <div style={{background:"rgba(255,255,255,0.05)",borderRadius:"14px",border:`1px solid ${feedOverdue?"rgba(251,191,36,0.22)":"rgba(255,255,255,0.07)"}`,overflow:"hidden",userSelect:"none"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px 11px"}}>
+        {/* Crop icon */}
+        <div onClick={onTap} style={{width:40,height:40,borderRadius:"11px",background:`${iconBg}33`,border:`1px solid ${iconBg}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.35rem",flexShrink:0,cursor:"pointer"}}>
+          {emoji}
+        </div>
+        {/* Name */}
+        <div onClick={onTap} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+          <div style={{fontSize:"1rem",fontWeight:600,color:"rgba(232,245,233,0.92)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.2}}>
+            {crop.variety||crop.name}
+          </div>
+          {/* Stat strip inline below name */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,flexWrap:"nowrap",overflow:"hidden"}}>
+            {sortMode==="stage"?(
+              <span style={{display:"flex",alignItems:"center",gap:4,background:`${sc.dot}20`,border:`1px solid ${sc.dot}35`,borderRadius:"20px",padding:"2px 7px",flexShrink:0}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:sc.dot,display:"inline-block",flexShrink:0}}/>
+                <span style={{fontSize:"0.7rem",fontWeight:600,color:sc.dot}}>{crop.stage}</span>
+              </span>
+            ):sortMode==="feed"?(
+              // Feed sort — show only feed stat so ordering is clear
+              feedLabel?(
+                <span style={{fontSize:"0.72rem",color:feedOverdue?"#fbbf24":"rgba(232,245,233,0.6)",fontWeight:feedOverdue?600:400,flexShrink:0}}>
+                  🌿 {feedLabel}
+                </span>
+              ):(
+                <span style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.25)",flexShrink:0}}>🌿 Never fed</span>
+              )
+            ):(
+              <>
+                {waterLabel&&(
+                  <span style={{fontSize:"0.72rem",color:daysWater===0?"#4ade80":"rgba(232,245,233,0.45)",flexShrink:0}}>
+                    💧 {waterLabel}
+                  </span>
+                )}
+                {feedLabel&&(
+                  <span style={{fontSize:"0.72rem",color:feedOverdue?"#fbbf24":"rgba(232,245,233,0.45)",fontWeight:feedOverdue?600:400,flexShrink:0}}>
+                    🌿 {feedLabel}
+                  </span>
+                )}
+                {daysLeft!==null&&(
+                  <span style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",flexShrink:0}}>
+                    ☀ {daysLeft===0?"ready":`${daysLeft}d`}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        {/* Quick action buttons */}
+        <div style={{display:"flex",gap:5,flexShrink:0}}>
+          <button onClick={e=>{e.stopPropagation();onWater();}} aria-label="Log water" style={{width:34,height:34,borderRadius:"10px",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem"}}>💧</button>
+          <button onClick={e=>{e.stopPropagation();onFeed();}} aria-label="Log feed" style={{width:34,height:34,borderRadius:"10px",background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.25)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem"}}>🌿</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Feed All Sheet ─────────────────────────────────────────────
 function FeedAllSheet({show,location,crops,nutrients,onFeedAll,onClose}) {
   const [step,setStep]=useState("select"); // select → form → confirm
@@ -2405,31 +2544,48 @@ function LocCard({loc,crops,sort,onLocClick,onCropClick,onWaterCrop,onFeedCrop})
       {/* Crop rows */}
       <div style={{display:"flex",flexDirection:"column"}}>
         {sorted.map((c,i)=>{
-          const acc=cropAccent(c);
           const sc=STAGE_COLORS[c.stage]||STAGE_COLORS.Seed;
-          const dInStage=daysSinceStage(c);
+          const fl=c.feedLog||[];
+          const fs=c.feedSchedules||{};
+          const feedOverdue=Object.entries(fs).some(([n,d])=>{const l=[...fl].reverse().find(f=>f.nutrient===n);return l&&daysAgo(l.date)>=scheduleDays(d);});
           const manualWaters=(c.waterLog||[]).filter(w=>!w.auto||w.source!=="rain");
           const lastWater=manualWaters.length?manualWaters[manualWaters.length-1]:null;
           const daysNoWater=lastWater?daysAgo(lastWater.date):null;
-          const waterAlert=daysNoWater!==null&&daysNoWater>=2;
+          const lastFeedEntry=[...fl].sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+          const daysFeed=lastFeedEntry?daysAgo(lastFeedEntry.date):null;
           const isLast=i===sorted.length-1;
+          const emoji=cropEmoji(c);
+          const acc=cropAccent(c);
           return(
-            <div key={c.id} style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 16px",borderBottom:isLast?"none":"1px solid rgba(255,255,255,0.04)"}}>
-              <div style={{width:"3px",alignSelf:"stretch",borderRadius:"2px",background:`linear-gradient(to bottom,${acc.from},${acc.to})`,flexShrink:0,minHeight:38}}/>
-              <div onClick={()=>onCropClick(c)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-                <div style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.1em",color:"rgba(255,255,255,0.35)",textTransform:"uppercase",marginBottom:"1px"}}>{c.name}</div>
-                <div style={{fontFamily:F.serif,fontStyle:"italic",fontSize:"0.95rem",color:"rgba(255,255,255,0.9)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.2}}>{c.variety||c.name}</div>
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:isLast?"none":"1px solid rgba(255,255,255,0.04)"}}>
+              {/* Crop icon */}
+              <div onClick={()=>onCropClick(c)} style={{width:38,height:38,borderRadius:"10px",background:`${acc.from}33`,border:`1px solid ${acc.from}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.25rem",flexShrink:0,cursor:"pointer"}}>
+                {emoji}
               </div>
-              <div onClick={()=>onCropClick(c)} style={{cursor:"pointer",flexShrink:0,textAlign:"right"}}>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-                  <div style={{background:`${sc.dot}22`,border:`1px solid ${sc.dot}55`,borderRadius:"20px",padding:"3px 8px",display:"flex",alignItems:"center",gap:"4px"}}>
-                    <div style={{width:"6px",height:"6px",borderRadius:"50%",background:sc.dot,flexShrink:0}}/>
-                    <span style={{fontSize:"0.72rem",fontWeight:600,color:sc.dot}}>{c.stage}</span>
-                    {dInStage!==null&&<span style={{fontSize:"0.65rem",color:`${sc.dot}99`}}>{dInStage}d</span>}
-                  </div>
-                  {daysNoWater!==null&&<span style={{fontSize:"0.65rem",color:waterAlert?"#60a5fa":"rgba(232,245,233,0.3)"}}>💧 {daysNoWater===0?"today":`${daysNoWater}d ago`}</span>}
+              {/* Name + stats */}
+              <div onClick={()=>onCropClick(c)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+                <div style={{fontSize:"0.95rem",fontWeight:600,color:"rgba(232,245,233,0.92)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.2}}>{c.variety||c.name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
+                  {sort==="stage"?(
+                    <span style={{display:"flex",alignItems:"center",gap:4,background:`${sc.dot}20`,border:`1px solid ${sc.dot}35`,borderRadius:"20px",padding:"2px 7px",flexShrink:0}}>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:sc.dot,display:"inline-block",flexShrink:0}}/>
+                      <span style={{fontSize:"0.7rem",fontWeight:600,color:sc.dot}}>{c.stage}</span>
+                    </span>
+                  ):sort==="feed"?(
+                    daysFeed!==null?(
+                      <span style={{fontSize:"0.7rem",color:feedOverdue?"#fbbf24":"rgba(232,245,233,0.4)",fontWeight:feedOverdue?600:400}}>🌿 {feedOverdue?"Overdue":daysFeed===0?"Today":daysFeed===1?"Yesterday":`${daysFeed}d ago`}</span>
+                    ):(
+                      <span style={{fontSize:"0.7rem",color:"rgba(232,245,233,0.25)"}}>🌿 Never fed</span>
+                    )
+                  ):(
+                    <>
+                      {daysNoWater!==null&&<span style={{fontSize:"0.7rem",color:daysNoWater===0?"#4ade80":"rgba(232,245,233,0.4)"}}>💧 {daysNoWater===0?"Today":daysNoWater===1?"Yesterday":`${daysNoWater}d ago`}</span>}
+                      {daysFeed!==null&&<span style={{fontSize:"0.7rem",color:feedOverdue?"#fbbf24":"rgba(232,245,233,0.4)",fontWeight:feedOverdue?600:400}}>🌿 {feedOverdue?"Overdue":daysFeed===0?"Today":daysFeed===1?"Yesterday":`${daysFeed}d ago`}</span>}
+                    </>
+                  )}
                 </div>
               </div>
+              {/* Quick action buttons */}
               <div style={{display:"flex",gap:5,flexShrink:0}}>
                 <button onClick={e=>{e.stopPropagation();onWaterCrop(c.id);}} style={{width:34,height:34,borderRadius:"10px",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem"}}>💧</button>
                 <button onClick={e=>{e.stopPropagation();onFeedCrop(c);}} style={{width:34,height:34,borderRadius:"10px",background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.25)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem"}}>🌿</button>
@@ -3371,12 +3527,17 @@ function App() {
   const [weatherRecLoading,setWeatherRecLoading]=useState(false);
 
   // ── Historical rain sync ─────────────────────────────────────
-  const rainSyncRef = useRef({running:false});
+  const rainSyncRef = useRef({running:false,lastFetch:0});
   const syncRainData=async(lat,lon,locMeta,cropList)=>{
     if(!lat||!lon) return;
     const today=todayStr();
     // Prevent concurrent/overlapping syncs (which could write duplicate rows)
     if(rainSyncRef.current.running) return;
+    // Throttle: the effect re-fires whenever locationMeta changes (which a sync
+    // itself causes by stamping lastRainSync). Skip if we just fetched, to avoid
+    // a re-fetch loop now that the old "already synced today" guard is gone.
+    const MIN_FETCH_GAP_MS=5*60*1000; // 5 min
+    if(Date.now()-rainSyncRef.current.lastFetch<MIN_FETCH_GAP_MS) return;
     rainSyncRef.current.running=true;
     try {
       await runRainSync(lat,lon,locMeta,cropList,today);
@@ -3403,16 +3564,30 @@ function App() {
       return last<min?last:min;
     },today);
 
-    const startDate=outdoorLocs.some(loc=>!meta[loc]?.lastRainSync)
+    // How many trailing days to re-check for revised (provisional->final) amounts.
+    // Open-Meteo's forecast values for recent days settle within ~a week; today's
+    // value in particular is provisional and updates as more rain falls.
+    const REVISE_WINDOW_DAYS=10;
+
+    const rawStart=outdoorLocs.some(loc=>!meta[loc]?.lastRainSync)
       ?earliestCropDate
       :earliestSync;
-    if(startDate>=today) return;
+    if(!rawStart) return;
+    // Always extend the fetch window back over the revision window so recently
+    // logged (still-provisional) days get re-examined, not just brand-new dates.
+    const reviseStartD=parseDate(today); reviseStartD.setDate(reviseStartD.getDate()-REVISE_WINDOW_DAYS);
+    const reviseStartStr=`${reviseStartD.getFullYear()}-${String(reviseStartD.getMonth()+1).padStart(2,'0')}-${String(reviseStartD.getDate()).padStart(2,'0')}`;
+    // Don't start before the crop/garden actually existed.
+    const earliestAllowed=earliestCropDate||rawStart;
+    let startDate=rawStart<reviseStartStr?rawStart:reviseStartStr;
+    if(startDate<earliestAllowed) startDate=earliestAllowed;
 
     try{
       // Use forecast API with past_days - more reliable than archive API which lags 5-7 days
       const pastDays=Math.min(92,Math.ceil((new Date()-new Date(startDate+"T00:00:00"))/86400000));
       if(pastDays<=0) return;
       const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum&past_days=${pastDays}&forecast_days=1&timezone=auto&precipitation_unit=inch`;
+      rainSyncRef.current.lastFetch=Date.now();
       const res=await fetch(url);
       if(!res.ok) return;
       const raw=await res.json();
@@ -3435,36 +3610,64 @@ function App() {
         return;
       }
 
-      // Add rain entries to each outdoor crop's waterLog.
-      // Collect DB-written entries (with real _id) keyed by crop id.
-      const additions={}; // cropId -> [entries with _id]
+      // Add new rain entries, and revise recent ones whose amount changed.
+      const cutoffDate=parseDate(todayStr()); cutoffDate.setDate(cutoffDate.getDate()-REVISE_WINDOW_DAYS);
+      const withinReviseWindow=dateStr=>{const d=parseDate(dateStr); return d&&d>=cutoffDate;};
+      const additions={}; // cropId -> [entries with _id]   (new inserts)
+      const revisions={}; // cropId -> [{_id,date,amount,note}]  (amount updates)
       for(const c of cropData) {
         if(!outdoorLocs.includes(c.location)||c.archived) continue;
-        const existingDates=new Set((c.waterLog||[]).filter(w=>w.auto&&w.source==="rain").map(w=>w.date?.slice(0,10)));
+        const rainRows=(c.waterLog||[]).filter(w=>w.auto&&w.source==="rain");
+        const byDate={}; rainRows.forEach(w=>{const k=w.date?.slice(0,10); if(k) byDate[k]=w;});
         const outdoorStart=c.startType==="indoor"&&c.transplantDate?c.transplantDate:c.seedDate;
-        const pending=Object.entries(rainByDate)
-          .filter(([date])=>date>=outdoorStart&&!existingDates.has(date))
-          .map(([date,amount])=>({date:`${date}T12:00:00`,amount,unit:"in",auto:true,source:"rain",note:`🌧 ${amount}" rainfall`}));
-        if(!pending.length) continue;
-        const written=[];
-        for(const e of pending) {
-          const row=await db2.addWater(c.id,e.date,'rain',e.amount,'in',e.note);
-          written.push({...e,_id:row?.id});
+        const newEntries=[];
+        const revEntries=[];
+        for(const [date,amount] of Object.entries(rainByDate)){
+          if(date<outdoorStart) continue;
+          const existing=byDate[date];
+          if(!existing){
+            newEntries.push({date:`${date}T12:00:00`,amount,unit:"in",auto:true,source:"rain",note:`🌧 ${amount}" rainfall`});
+          } else if(withinReviseWindow(date) && existing._id && Math.abs((existing.amount||0)-amount)>0.001){
+            revEntries.push({_id:existing._id,date:existing.date,amount,note:`🌧 ${amount}" rainfall`});
+          }
         }
-        additions[c.id]=written;
+        if(newEntries.length){
+          const written=[];
+          for(const e of newEntries){
+            const row=await db2.addWater(c.id,e.date,'rain',e.amount,'in',e.note);
+            written.push({...e,_id:row?.id});
+          }
+          additions[c.id]=written;
+        }
+        if(revEntries.length){
+          for(const r of revEntries){
+            await db2.updateWater(r._id,{amount:r.amount,note:r.note});
+          }
+          revisions[c.id]=revEntries;
+        }
       }
 
-      // Merge into current state via functional updater (avoids stale closure overwrite)
-      if(Object.keys(additions).length){
-        setCrops(prev=>prev.map(c=>{
+      // Merge inserts + revisions into current state via functional updater.
+      if(Object.keys(additions).length||Object.keys(revisions).length){
+        const mergeRain=c=>{
           const add=additions[c.id];
-          if(!add) return c;
-          const have=new Set((c.waterLog||[]).filter(w=>w.auto&&w.source==="rain").map(w=>w.date?.slice(0,10)));
-          const fresh=add.filter(e=>!have.has(e.date.slice(0,10)));
-          if(!fresh.length) return c;
-          const combined=[...(c.waterLog||[]),...fresh].sort((a,b)=>new Date(a.date)-new Date(b.date));
+          const rev=revisions[c.id];
+          if(!add&&!rev) return c;
+          let wl=c.waterLog||[];
+          if(rev){
+            const revById={}; rev.forEach(r=>{revById[r._id]=r;});
+            wl=wl.map(w=>w._id&&revById[w._id]?{...w,amount:revById[w._id].amount,note:revById[w._id].note}:w);
+          }
+          if(add){
+            const have=new Set(wl.filter(w=>w.auto&&w.source==="rain").map(w=>w.date?.slice(0,10)));
+            const fresh=add.filter(e=>!have.has(e.date.slice(0,10)));
+            if(fresh.length) wl=[...wl,...fresh];
+          }
+          const combined=[...wl].sort((a,b)=>parseDate(a.date)-parseDate(b.date));
           return {...c,waterLog:combined};
-        }));
+        };
+        setCrops(prev=>prev.map(mergeRain));
+        setSelCrop(p=>p?mergeRain(p):p);
       }
 
       // Update lastRainSync for all outdoor locations (local + DB)
@@ -3689,6 +3892,10 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const [dashFeedCrop,setDashFeedCrop] = useState(null);
   const [searchQuery,setSearchQuery] = useState("");
   const [locSorts,setLocSorts]     = useState({});
+  const [alertsCollapsed,setAlertsCollapsed] = useState(true);
+  const [showSearch,setShowSearch]   = useState(false);
+  const [flatView,setFlatView]       = useState(false);
+  const [flatSort,setFlatSort]       = useState("az");
   const [expandedWeatherDay,setExpandedWeatherDay] = useState(null);
   const [confirmDeleteSucc,setConfirmDeleteSucc]   = useState(null);
   const [confirmDeleteArchived,setConfirmDeleteArchived] = useState(null);
@@ -3893,6 +4100,8 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
       if(gardenId){
         const tempId=crop.id; // temp ID generated by form (uid("crop"))
         const locId=await db2.getLocationId(gardenId,crop.location);
+        // Auto-assign icon from name inference if user didn't pick one
+        if(!crop.icon) crop={...crop,icon:cropEmoji(crop)};
         const result=await db2.insertCrop(gardenId,locId,crop);
         if(result&&result.id){
           const initialStage={stage:crop.stage||"Seed",date:crop.seedDate||t0,inContainer:crop.inContainer||false,containerSize:crop.containerSize||null,location_id:locId||null,_id:result.stageRow?.id};
@@ -3905,7 +4114,7 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
       }
     } else {
       // Edit existing crop — update DB
-      if(crop.id) await db2.updateCrop(crop.id,{name:crop.name,variety:crop.variety,seedDate:crop.seedDate,startType:crop.startType,daysToMaturity:crop.daysToMaturity,successionDays:crop.successionDays,color:crop.color,archived:crop.archived,finalNote:crop.finalNote,stage:crop.stage,inContainer:crop.inContainer,containerSize:crop.containerSize});
+      if(crop.id) await db2.updateCrop(crop.id,{name:crop.name,variety:crop.variety,seedDate:crop.seedDate,startType:crop.startType,daysToMaturity:crop.daysToMaturity,successionDays:crop.successionDays,color:crop.color,icon:crop.icon||cropEmoji(crop),archived:crop.archived,finalNote:crop.finalNote,stage:crop.stage,inContainer:crop.inContainer,containerSize:crop.containerSize});
       const prev=crops.find(c=>c.id===crop.id);
       // If seed date changed, update the initial stage history entry
       if(prev&&crop.seedDate&&crop.seedDate!==prev.seedDate){
@@ -3921,8 +4130,8 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
       } else {
         const prev2=crops.find(c=>c.id===crop.id);
         if(prev2&&prev2.stage!==crop.stage){
-          const sh={stage:crop.stage,date:t0,inContainer:crop.inContainer||false,containerSize:crop.containerSize||null};
-          const dbRow=await db2.addStageHistory(crop.id,sh.stage,sh.date,{inContainer:sh.inContainer,containerSize:sh.containerSize});
+          const dbRow=await db2.addStageHistory(crop.id,crop.stage,t0,{inContainer:crop.inContainer||false,containerSize:crop.containerSize||null});
+          const sh={_id:dbRow?.id,stage:crop.stage,date:t0,inContainer:crop.inContainer||false,containerSize:crop.containerSize||null};
           const noteText=crop.stage==="Seedling"?"Seed germinated 🌱":`Stage changed to ${crop.stage}`;
           const noteRow=await db2.addNote(crop.id,t0+"T12:00:00",noteText,true);
           setCrops(cs=>cs.map(c=>c.id!==crop.id?c:{...c,...crop,
@@ -3930,7 +4139,7 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
             notes:[...(c.notes||[]),{date:noteRow?.date||t0,text:noteText,auto:true,_id:noteRow?.id}]}));
           setSelCrop(p=>!p||p.id!==crop.id?p:{...p,...crop,
             stageHistory:p.stageHistory?.length?[{...p.stageHistory[0],date:crop.seedDate||p.stageHistory[0].date},...p.stageHistory.slice(1),sh]:p.stageHistory||[],
-            notes:[...(p.notes||[]),{date:noteRow?.date||t0,text:noteText,auto:true}]});
+            notes:[...(p.notes||[]),{date:noteRow?.date||t0,text:noteText,auto:true,_id:noteRow?.id}]});
         } else {
           setCrops(cs=>cs.map(c=>c.id===crop.id?{...c,...crop,
             stageHistory:c.stageHistory?.length?[{...c.stageHistory[0],date:crop.seedDate||c.stageHistory[0].date},...c.stageHistory.slice(1)]:c.stageHistory||[]
@@ -4033,13 +4242,17 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
     const now=ts();
     const rows=await Promise.all(ids.map(id=>db2.addWater(id,now,'manual')));
     const idToRow={};ids.forEach((id,i)=>{idToRow[id]=rows[i];});
-    setCrops(cs=>cs.map(c=>ids.includes(c.id)?{...c,waterLog:[...(c.waterLog||[]),{date:idToRow[c.id]?.date||now,_id:idToRow[c.id]?.id}]}:c));
+    const addEntry=c=>ids.includes(c.id)?{...c,waterLog:[...(c.waterLog||[]),{date:idToRow[c.id]?.date||now,_id:idToRow[c.id]?.id}]}:c;
+    setCrops(cs=>cs.map(addEntry));
+    setSelCrop(p=>p?addEntry(p):p);
   };
   const feedAll=async(ids,nutrient,qty,water,date)=>{
     const d=date||ts();
     const rows=await Promise.all(ids.map(id=>db2.addFeed(id,d,nutrient,qty||null,water||null)));
     const idToRow={};ids.forEach((id,i)=>{idToRow[id]=rows[i];});
-    setCrops(cs=>cs.map(c=>ids.includes(c.id)?{...c,feedLog:[...(c.feedLog||[]),{date:idToRow[c.id]?.date||d,nutrient,qty:qty||null,water:water||null,_id:idToRow[c.id]?.id}]}:c));
+    const addEntry=c=>ids.includes(c.id)?{...c,feedLog:[...(c.feedLog||[]),{date:idToRow[c.id]?.date||d,nutrient,qty:qty||null,water:water||null,_id:idToRow[c.id]?.id}]}:c;
+    setCrops(cs=>cs.map(addEntry));
+    setSelCrop(p=>p?addEntry(p):p);
   };
   const transplantCrop=async(id,toLoc,date,inContainer,containerSize,newLocs)=>{
     if(newLocs){
@@ -4160,183 +4373,228 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const totalAlerts=taskCount+overdueFeeds;
   return(
     <div style={{width:"100%",height:"100%",background:C.bg,color:"white",display:"flex",flexDirection:"column",overflow:"hidden",position:"fixed",top:0,left:0,right:0,bottom:0}}>
-      {/* Fixed header */}
-      <div style={{flexShrink:0,padding:"max(54px,calc(var(--sat, env(safe-area-inset-top, 50px)) + 16px)) 18px 14px",background:C.bg}}>
+      {/* ── Fixed header ── */}
+      <div style={{flexShrink:0,padding:"max(54px,calc(var(--sat, env(safe-area-inset-top, 50px)) + 16px)) 18px 12px",background:C.bg}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
           <div>
             {zone&&<div style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.18em",color:C.greenFg,textTransform:"uppercase",marginBottom:"4px",opacity:0.7}}>Zone {zone}</div>}
             <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1}}>{gardenName}</h1>
             <div style={{fontSize:"0.78rem",color:C.dashSub,marginTop:"5px"}}>{active.length} active crop{active.length!==1?"s":""}{activeLocs.length>0?` · ${activeLocs.length} location${activeLocs.length!==1?"s":""}`:""}</div>
           </div>
-          {/* LogoButton - taps to settings */}
-          <div onClick={()=>setView("settings")} style={{position:"relative",cursor:"pointer",flexShrink:0,marginTop:"4px"}}>
-            <img src={ICON_SRC} alt="Garden Tracker" style={{width:"44px",height:"44px",borderRadius:"11px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
-            <div style={{position:"absolute",bottom:"-3px",right:"-3px",width:"17px",height:"17px",borderRadius:"9px",background:C.bgCard,border:"1.5px solid rgba(255,255,255,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="10" height="10" viewBox="0 0 11 11" fill="none"><path d="M5.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1"/><path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.2 2.8l-.7.7M2.8 8.2l-.7.7" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1" strokeLinecap="round"/></svg>
+          {/* Right icon cluster */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,flexShrink:0}}>
+            {/* Search icon */}
+            <button onClick={()=>setShowSearch(true)} aria-label="Search crops" style={{width:34,height:34,borderRadius:"10px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="7.5" cy="7.5" r="5" stroke="rgba(232,245,233,0.55)" strokeWidth="1.6"/><path d="M11.5 11.5L16 16" stroke="rgba(232,245,233,0.55)" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            </button>
+            {/* Layout toggle: by-location ↔ flat list */}
+            <button onClick={()=>setFlatView(f=>!f)} aria-label={`Switch to ${flatView?"location":"flat"} view`} style={{width:34,height:34,borderRadius:"10px",background:flatView?"rgba(134,239,172,0.15)":"rgba(255,255,255,0.07)",border:`1px solid ${flatView?"rgba(134,239,172,0.3)":"rgba(255,255,255,0.1)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+              {flatView?(
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/><rect x="1" y="7" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/><rect x="1" y="12" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/></svg>
+              ):(
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/></svg>
+              )}
+            </button>
+            {/* Settings logo */}
+            <div onClick={()=>setView("settings")} style={{position:"relative",cursor:"pointer",flexShrink:0}}>
+              <img src={ICON_SRC} alt="Settings" style={{width:"34px",height:"34px",borderRadius:"10px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
+              <div style={{position:"absolute",bottom:"-3px",right:"-3px",width:"14px",height:"14px",borderRadius:"7px",background:C.bgCard,border:"1.5px solid rgba(255,255,255,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <svg width="8" height="8" viewBox="0 0 11 11" fill="none"><path d="M5.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1"/><path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.2 2.8l-.7.7M2.8 8.2l-.7.7" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1" strokeLinecap="round"/></svg>
+              </div>
             </div>
           </div>
         </div>
-        {/* Search bar */}
-        <div style={{marginTop:"12px",position:"relative",display:"flex",alignItems:"center"}}>
-          <span style={{position:"absolute",left:"12px",fontSize:"1rem",pointerEvents:"none",opacity:0.4}}>🔍</span>
-          <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search crops..." style={{width:"100%",padding:"10px 36px 10px 36px",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.07)",color:"white",fontSize:"16px",outline:"none",boxSizing:"border-box"}}/>
-          {searchQuery&&<button onClick={()=>setSearchQuery("")} style={{position:"absolute",right:"10px",background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:"1.1rem",cursor:"pointer",padding:"4px",lineHeight:1}}>×</button>}
-        </div>
-        {/* Weather recommendation banner */}
-        {(weatherData||weatherRecLoading)&&(
-          <div style={{marginTop:"10px",background:"rgba(30,58,138,0.4)",border:"1px solid rgba(96,165,250,0.3)",borderRadius:"14px",padding:"12px 14px",display:"flex",alignItems:"flex-start",gap:10}}>
-            {weatherRecLoading?(
-              <>
-                <span style={{fontSize:"1.2rem",flexShrink:0,marginTop:1,animation:"spin 1s linear infinite"}}>⟳</span>
-                <span style={{fontSize:"0.85rem",color:"rgba(147,197,253,0.5)",fontStyle:"italic"}}>Reading today's conditions...</span>
-              </>
-            ):(
-              <>
-                <span style={{fontSize:"1.2rem",flexShrink:0,marginTop:1}}>🌤</span>
-                <span style={{fontSize:"0.85rem",color:"#93c5fd",fontWeight:500,lineHeight:1.5}}>{weatherRec||"No weather alerts — conditions look good today"}</span>
-              </>
+      </div>
+
+      {/* ── Search overlay ── */}
+      {showSearch&&(
+        <div style={{position:"absolute",inset:0,background:"rgba(14,21,14,0.97)",zIndex:300,display:"flex",flexDirection:"column",padding:"max(54px,calc(var(--sat, env(safe-area-inset-top, 50px)) + 16px)) 16px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.08)",borderRadius:"14px",padding:"10px 14px",border:"1px solid rgba(255,255,255,0.12)",marginBottom:16}}>
+            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" style={{flexShrink:0}}><circle cx="7.5" cy="7.5" r="5" stroke="rgba(232,245,233,0.4)" strokeWidth="1.6"/><path d="M11.5 11.5L16 16" stroke="rgba(232,245,233,0.4)" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            <input autoFocus value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search crops..." style={{flex:1,background:"none",border:"none",outline:"none",color:"white",fontSize:"16px"}}/>
+            <button onClick={()=>{setShowSearch(false);setSearchQuery("");}} style={{background:"none",border:"none",color:"rgba(232,245,233,0.4)",fontSize:"1.1rem",cursor:"pointer",padding:"2px",lineHeight:1,flexShrink:0}}>×</button>
+          </div>
+          <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+            {searchQuery?(()=>{
+              const q=searchQuery.toLowerCase();
+              const results=active.filter(c=>c.name?.toLowerCase().includes(q)||c.variety?.toLowerCase().includes(q)||c.location?.toLowerCase().includes(q)||c.stage?.toLowerCase().includes(q));
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)",marginBottom:2}}>{results.length} result{results.length!==1?"s":""}</div>
+                  {results.length===0&&<div style={{textAlign:"center",padding:"3rem 0",color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No crops match "{searchQuery}"</div>}
+                  {results.map(c=>(
+                    <NewCropCard key={c.id} crop={c}
+                      onTap={()=>{setSelCrop(c);setSelLoc(c.location);setView("crop");setShowSearch(false);setSearchQuery("");}}
+                      onWater={()=>waterCrop(c.id)}
+                      onFeed={()=>{setSelCrop(c);setSelLoc(c.location);setView("crop");setDashFeedCrop(c.id);setShowSearch(false);setSearchQuery("");}}
+                    />
+                  ))}
+                </div>
+              );
+            })():(
+              <div style={{textAlign:"center",padding:"4rem 0",color:"rgba(255,255,255,0.2)"}}>
+                <div style={{fontSize:"2rem",marginBottom:8}}>🔍</div>
+                <div style={{fontSize:"0.9rem"}}>Type to search your crops</div>
+              </div>
             )}
           </div>
-        )}
-        {/* Today's priorities card */}
-        {(()=>{
-          const t0=todayStr();
-          const todayItems=[];
-          const upcomingItems=[];
-          const seenSucc=new Set();
-          active.forEach(c=>{
-            if(!c.successionDays||!c.seedDate) return;
-            const gk=`${c.name}::${c.variety}`;
-            if(seenSucc.has(gk)) return;
-            seenSucc.add(gk);
-            const allSame=active.filter(x=>x.name===c.name&&x.variety===c.variety&&x.seedDate);
-            const latest=allSame.map(x=>x.seedDate).sort().pop()||c.seedDate;
-            const next=succDate(latest,c.successionDays);
-            const diff=daysUntil(next);
-            if(diff===null) return;
-            if(diff<=0) todayItems.push({urgency:diff<0?0:1,icon:"🌱",label:`Sow ${c.name}`,variety:c.variety,sub:diff<0?`${Math.abs(diff)}d overdue`:"Today"});
-            else if(diff<=7) upcomingItems.push({urgency:diff,icon:"🌱",label:`Sow ${c.name}`,variety:c.variety,sub:`In ${diff}d`});
-          });
-          active.forEach(c=>{
-            const s=c.feedSchedules||{};const fl=c.feedLog||[];
-            Object.entries(s).forEach(([n,d])=>{
-              const l=[...fl].reverse().find(f=>f.nutrient===n);
-              const days=l?daysAgo(l.date):999;
-              const freq=scheduleDays(d);
-              const daysLeft=freq-days;
-              if(daysLeft<=0) todayItems.push({urgency:daysLeft<0?0:1,icon:"🌿",label:`Feed ${c.variety||c.name}`,variety:n,sub:l?`${days}d overdue`:"Never fed"});
-              else if(daysLeft<=3) upcomingItems.push({urgency:daysLeft,icon:"🌿",label:`Feed ${c.variety||c.name}`,variety:n,sub:`In ${daysLeft}d`});
-            });
-          });
-          todos.filter(t=>!t.done&&t.due).forEach(t=>{
-            const diff=daysUntil(t.due);
-            if(diff===null) return;
-            if(diff<=0) todayItems.push({urgency:diff<0?0:1,icon:"✓",label:t.text,variety:null,sub:diff<0?`${Math.abs(diff)}d overdue`:"Today"});
-            else if(diff<=3) upcomingItems.push({urgency:diff,icon:"✓",label:t.text,variety:null,sub:diff===1?"Tomorrow":`In ${diff}d`});
-          });
-          todayItems.sort((a,b)=>a.urgency-b.urgency);
-          upcomingItems.sort((a,b)=>a.urgency-b.urgency);
-          const hasToday=todayItems.length>0;
-          const items=hasToday?todayItems:upcomingItems;
-          const shown=items.slice(0,2);
-          const extra=items.length-shown.length;
-          const isUpcoming=!hasToday&&upcomingItems.length>0;
-          const isEmpty=items.length===0;
-          return(
-            <div onClick={()=>setView("todo")} style={{marginTop:"10px",background:hasToday?"rgba(120,53,15,0.5)":isUpcoming?"rgba(30,58,100,0.4)":"rgba(20,83,45,0.4)",border:hasToday?"1px solid rgba(245,158,11,0.3)":isUpcoming?"1px solid rgba(96,165,250,0.25)":"1px solid rgba(34,197,94,0.2)",borderRadius:"14px",padding:"14px",cursor:"pointer"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:isEmpty?0:10}}>
-                <div style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:hasToday?"#fbbf24":isUpcoming?"#93c5fd":"#86efac"}}>
-                  {hasToday&&`⚠ Today · ${todayItems.length} item${todayItems.length!==1?"s":""}`}
-                  {isUpcoming&&`📅 Upcoming · ${upcomingItems.length} item${upcomingItems.length!==1?"s":""}`}
-                  {isEmpty&&"✓ No pending tasks"}
-                </div>
-                {!isEmpty&&<span style={{fontSize:"0.75rem",color:hasToday?"rgba(251,191,36,0.55)":"rgba(147,197,253,0.55)",fontWeight:600}}>View all ›</span>}
-              </div>
-              {shown.map((item,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:i<shown.length-1?7:0}}>
-                  <span style={{fontSize:"0.88rem",flexShrink:0}}>{item.icon}</span>
-                  <span style={{fontSize:"0.88rem",color:"rgba(232,245,233,0.85)",fontWeight:500}}>{item.label}</span>
-                  {item.variety&&<span style={{fontFamily:F.serif,fontStyle:"italic",fontSize:"0.88rem",color:"rgba(232,245,233,0.55)"}}>· {item.variety}</span>}
-                  <span style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",marginLeft:"auto",flexShrink:0}}>{item.sub}</span>
-                </div>
-              ))}
-              {extra>0&&<div style={{fontSize:"0.78rem",color:"rgba(232,245,233,0.35)",marginTop:8}}>+{extra} more</div>}
-            </div>
-          );
-        })()}
-      </div>
-      {/* Scrollable crop list */}
+        </div>
+      )}
+
+      {/* ── Scrollable body ── */}
       <div style={{flex:1,minHeight:0,overflowY:"auto",overflowX:"hidden",WebkitOverflowScrolling:"touch",paddingBottom:"16px"}}>
         <div style={{padding:"0 14px",display:"flex",flexDirection:"column",gap:"10px"}}>
-          {/* YOUR GARDEN header */}
-          {activeLocs.length>0&&!searchQuery&&(
-            <div style={{paddingTop:4,paddingBottom:2}}>
-              <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)"}}>Your Garden</div>
+
+          {/* ── Weather recommendation (always shown when loaded) ── */}
+          {(weatherRec||weatherRecLoading)&&(
+            <div style={{background:"rgba(23,37,84,0.5)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:"14px",padding:"11px 13px",display:"flex",alignItems:"flex-start",gap:10}}>
+              {weatherRecLoading?(
+                <>
+                  <span style={{fontSize:"1.1rem",flexShrink:0,marginTop:1,display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>
+                  <span style={{fontSize:"0.82rem",color:"rgba(147,197,253,0.45)",fontStyle:"italic"}}>Reading today's conditions...</span>
+                </>
+              ):(
+                <>
+                  <span style={{fontSize:"1.1rem",flexShrink:0,marginTop:1}}>🌤</span>
+                  <span style={{fontSize:"0.82rem",color:"#93c5fd",lineHeight:1.5}}>{weatherRec}</span>
+                </>
+              )}
             </div>
           )}
-          {/* Search results */}
-          {searchQuery&&(()=>{
-            const q=searchQuery.toLowerCase();
-            const results=active.filter(c=>
-              c.name?.toLowerCase().includes(q)||
-              c.variety?.toLowerCase().includes(q)||
-              c.location?.toLowerCase().includes(q)||
-              c.stage?.toLowerCase().includes(q)
-            );
+
+          {/* ── Alerts card (hidden when no alerts) ── */}
+          {(()=>{
+            const alertItems=[];
+            // Feed schedule overdue
+            active.forEach(c=>{
+              const s=c.feedSchedules||{};const fl=c.feedLog||[];
+              Object.entries(s).forEach(([n,d])=>{
+                const l=[...fl].reverse().find(f=>f.nutrient===n);
+                const days=l?daysAgo(l.date):null;
+                const freq=scheduleDays(d);
+                if(days!==null&&days>=freq) alertItems.push({icon:"🌿",text:`${c.variety||c.name} — ${n} overdue`,sub:`${days-freq+1}d overdue`,urgency:0,nav:"todo"});
+              });
+            });
+            // Succession sowing overdue/due
+            const seenSuccA=new Set();
+            active.forEach(c=>{
+              if(!c.successionDays||!c.seedDate) return;
+              const gk=`${c.name}::${c.variety}`;
+              if(seenSuccA.has(gk)) return;
+              seenSuccA.add(gk);
+              const allSame=active.filter(x=>x.name===c.name&&x.variety===c.variety&&x.seedDate);
+              const latest=allSame.map(x=>x.seedDate).sort().pop()||c.seedDate;
+              const next=succDate(latest,c.successionDays);
+              const diff=daysUntil(next);
+              if(diff!==null&&diff<=0) alertItems.push({icon:"🌱",text:`Sow ${c.variety||c.name}`,sub:diff<0?`${Math.abs(diff)}d overdue`:"Due today",urgency:0,nav:"todo"});
+            });
+            // Todos overdue
+            todos.filter(t=>!t.done&&t.due&&daysUntil(t.due)<=0).forEach(t=>{
+              const diff=daysUntil(t.due);
+              alertItems.push({icon:"✓",text:t.text,sub:diff<0?`${Math.abs(diff)}d overdue`:"Due today",urgency:1,nav:"todo"});
+            });
+            if(!alertItems.length) return null;
+            alertItems.sort((a,b)=>a.urgency-b.urgency);
+            const first=alertItems[0];
+            const rest=alertItems.slice(1);
             return(
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)",paddingTop:4}}>{results.length} result{results.length!==1?"s":""}</div>
-                {results.length===0&&<div style={{textAlign:"center",padding:"3rem 0",color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No crops match "{searchQuery}"</div>}
-                {results.map(c=>{
-                  const acc=cropAccent(c);
-                  const sc=STAGE_COLORS[c.stage]||STAGE_COLORS.Seed;
-                  const dInStage=daysSinceStage(c);
-                  const manualWaters=(c.waterLog||[]).filter(w=>!w.auto||w.source!=="rain");
-                  const lastWater=manualWaters.length?manualWaters[manualWaters.length-1]:null;
-                  const daysNoWater=lastWater?daysAgo(lastWater.date):null;
-                  const waterAlert=daysNoWater!==null&&daysNoWater>=2;
-                  return(
-                    <div key={c.id} style={{background:C.bgCard,borderRadius:"14px",overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:"10px",padding:"10px 16px"}}>
-                      <div style={{width:"3px",alignSelf:"stretch",borderRadius:"2px",background:`linear-gradient(to bottom,${acc.from},${acc.to})`,flexShrink:0,minHeight:38}}/>
-                      <div onClick={()=>{setSelCrop(c);setSelLoc(c.location);setView("crop");setSearchQuery("");}} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-                        <div style={{fontSize:"0.58rem",fontWeight:700,letterSpacing:"0.1em",color:"rgba(255,255,255,0.3)",textTransform:"uppercase",marginBottom:1}}>{c.name} · {c.location}</div>
-                        <div style={{fontFamily:F.serif,fontStyle:"italic",fontSize:"0.95rem",color:"rgba(255,255,255,0.9)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.variety||c.name}</div>
-                      </div>
-                      <div onClick={()=>{setSelCrop(c);setSelLoc(c.location);setView("crop");setSearchQuery("");}} style={{cursor:"pointer",flexShrink:0}}>
-                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-                          <div style={{background:`${sc.dot}22`,border:`1px solid ${sc.dot}55`,borderRadius:"20px",padding:"3px 8px",display:"flex",alignItems:"center",gap:"4px"}}>
-                            <div style={{width:"6px",height:"6px",borderRadius:"50%",background:sc.dot}}/>
-                            <span style={{fontSize:"0.72rem",fontWeight:600,color:sc.dot}}>{c.stage}</span>
-                            {dInStage!==null&&<span style={{fontSize:"0.65rem",color:`${sc.dot}99`}}>{dInStage}d</span>}
-                          </div>
-                          {daysNoWater!==null&&<span style={{fontSize:"0.65rem",color:waterAlert?"#60a5fa":"rgba(232,245,233,0.3)"}}>💧 {daysNoWater===0?"today":`${daysNoWater}d ago`}</span>}
-                        </div>
-                      </div>
-                      <div style={{display:"flex",gap:5,flexShrink:0}}>
-                        <button onClick={e=>{e.stopPropagation();waterCrop(c.id);}} style={{width:34,height:34,borderRadius:"10px",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem"}}>💧</button>
-                        <button onClick={e=>{e.stopPropagation();setSelCrop(c);setSelLoc(c.location);setView("crop");setDashFeedCrop(c.id);setSearchQuery("");}} style={{width:34,height:34,borderRadius:"10px",background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.25)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem"}}>🌿</button>
-                      </div>
+              <div style={{background:"rgba(120,53,15,0.45)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:"14px",overflow:"hidden"}}>
+                {/* Header row — this IS the collapsed state */}
+                <button onClick={()=>setAlertsCollapsed(v=>!v)} aria-label={alertsCollapsed?"Expand alerts":"Collapse alerts"} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:"none",border:"none",cursor:"pointer"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:"#fbbf24",flexShrink:0}}/>
+                    <span style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#fbbf24"}}>
+                      {alertsCollapsed?`${alertItems.length} alert${alertItems.length!==1?"s":""}`:(`Alerts · ${alertItems.length}`)}
+                    </span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{fontSize:"0.72rem",color:"rgba(251,191,36,0.45)"}}>{alertsCollapsed?"show":"hide"}</span>
+                    <div style={{width:18,height:18,borderRadius:"5px",background:"rgba(245,158,11,0.12)",border:"1px solid rgba(245,158,11,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{transform:alertsCollapsed?"rotate(0deg)":"rotate(180deg)",transition:"transform 0.2s"}}><path d="M2 3.5L5 6.5L8 3.5" stroke="#fbbf24" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </div>
-                  );
-                })}
+                  </div>
+                </button>
+                {/* All alert rows — only shown when expanded */}
+                {!alertsCollapsed&&(
+                  <>
+                    {alertItems.map((item,i)=>(
+                      <div key={i} onClick={item.nav?()=>setView(item.nav):undefined} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",borderTop:"1px solid rgba(245,158,11,0.1)",cursor:item.nav?"pointer":"default"}}>
+                        <span style={{fontSize:"0.85rem",flexShrink:0}}>{item.icon}</span>
+                        <span style={{fontSize:"0.82rem",color:"rgba(232,245,233,0.8)",flex:1,lineHeight:1.3}}>{item.text}</span>
+                        <span style={{fontSize:"0.72rem",color:item.nav?"rgba(251,191,36,0.5)":"rgba(232,245,233,0.35)",flexShrink:0,whiteSpace:"nowrap"}}>{item.nav?"›  "+item.sub:item.sub}</span>
+                      </div>
+                    ))}
+                    <div style={{height:4}}/>
+                  </>
+                )}
               </div>
             );
           })()}
-          {!searchQuery&&(activeLocs.length===0&&orphanedCrops.length===0?(
+
+          {/* ── Crop list: location-grouped (default) or flat ── */}
+          {active.length===0&&orphanedCrops.length===0?(
             <div style={{textAlign:"center",padding:"5rem 0",color:"rgba(255,255,255,0.2)"}}>
               <div style={{fontSize:"3rem",marginBottom:"12px"}}>🌱</div>
               <div style={{fontSize:"0.95rem",marginBottom:"6px"}}>No crops logged yet.</div>
               <div style={{fontSize:"0.78rem",opacity:0.7}}>Tap + Add Crop to get started.</div>
             </div>
-          ):activeLocs.map(loc=><LocCard key={loc} loc={loc} crops={crops} sort={locSorts[loc]||"az"} onLocClick={()=>setSelLocSheet(loc)} onCropClick={c=>{setSelCrop(c);setSelLoc(loc);setView("crop");}} onWaterCrop={id=>waterCrop(id)} onFeedCrop={c=>{setSelCrop(c);setSelLoc(loc);setView("crop");setDashFeedCrop(c.id);}}/>))}
-          {!searchQuery&&orphanedCrops.length>0&&(
+          ):flatView?(
+            // ── Flat list view ──
+            <>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:2,paddingBottom:4}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)"}}>All crops</div>
+                <div style={{display:"flex",gap:5}}>
+                  {[{id:"az",label:"A–Z"},{id:"newest",label:"Newest"},{id:"oldest",label:"Oldest"},{id:"stage",label:"Stage"},{id:"feed",label:"Feed"}].map(opt=>(
+                    <button key={opt.id} onClick={()=>setFlatSort(opt.id)} style={{padding:"3px 9px",borderRadius:"20px",border:`1px solid ${flatSort===opt.id?"rgba(134,239,172,0.4)":"rgba(255,255,255,0.1)"}`,background:flatSort===opt.id?"rgba(134,239,172,0.12)":"transparent",color:flatSort===opt.id?"rgba(134,239,172,0.9)":"rgba(232,245,233,0.35)",fontSize:"0.68rem",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {[...active].sort((a,b)=>{
+                if(flatSort==="az") return (a.variety||a.name).localeCompare(b.variety||b.name);
+                if(flatSort==="newest") return (b.seedDate||"").localeCompare(a.seedDate||"");
+                if(flatSort==="oldest") return (a.seedDate||"").localeCompare(b.seedDate||"");
+                if(flatSort==="stage") return STAGE_ORDER.indexOf(a.stage)-STAGE_ORDER.indexOf(b.stage);
+                if(flatSort==="feed"){
+                  const isOverdue=x=>{const fs=x.feedSchedules||{};const fl=x.feedLog||[];return Object.keys(fs).length>0&&Object.keys(fs).some(n=>{const d=fs[n];const l=[...fl].reverse().find(f=>f.nutrient===n);return !l||daysAgo(l.date)>=scheduleDays(d);});};
+                  const overdueA=isOverdue(a)?1:0, overdueB=isOverdue(b)?1:0;
+                  if(overdueA!==overdueB) return overdueB-overdueA;
+                  // Both same overdue status — sort by days since last fed (most stale first)
+                  const latestFed=x=>{const fl=x.feedLog||[];if(!fl.length) return 999;const sorted=[...fl].sort((p,q)=>parseDate(q.date)-parseDate(p.date));return daysAgo(sorted[0].date)??999;};
+                  return latestFed(b)-latestFed(a);
+                }
+                return 0;
+              }).map(c=>(
+                <NewCropCard key={c.id} crop={c} sortMode={flatSort}
+                  onTap={()=>{setSelCrop(c);setSelLoc(c.location);setView("crop");}}
+                  onWater={()=>waterCrop(c.id)}
+                  onFeed={()=>{setSelCrop(c);setSelLoc(c.location);setView("crop");setDashFeedCrop(c.id);}}
+                />
+              ))}
+            </>
+          ):(
+            // ── Location-grouped view (default) ──
+            <>
+              {activeLocs.length>0&&(
+                <div style={{paddingTop:2,paddingBottom:0}}>
+                  <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)"}}>Your garden</div>
+                </div>
+              )}
+              {activeLocs.map(loc=><LocCard key={loc} loc={loc} crops={crops} sort={locSorts[loc]||"az"} onLocClick={()=>setSelLocSheet(loc)} onCropClick={c=>{setSelCrop(c);setSelLoc(loc);setView("crop");}} onWaterCrop={id=>waterCrop(id)} onFeedCrop={c=>{setSelCrop(c);setSelLoc(loc);setView("crop");setDashFeedCrop(c.id);}}/>)}
+            </>
+          )}
+
+          {/* ── Orphaned crops (location deleted) ── */}
+          {orphanedCrops.length>0&&(
             <div style={{background:"rgba(255,255,255,0.05)",borderRadius:"14px",padding:"12px 14px",border:"1px solid rgba(255,165,0,0.3)"}}>
-              <div style={{fontSize:"0.7rem",fontWeight:700,color:"#fbbf24",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"8px"}}>⚠ Location removed - these crops need attention</div>
+              <div style={{fontSize:"0.7rem",fontWeight:700,color:"#fbbf24",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"8px"}}>⚠ Location removed</div>
               <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
                 {orphanedCrops.map(c=><CropCard key={c.id} crop={c} onClick={()=>{setSelCrop(c);setSelLoc(null);setView("crop");}} onWater={waterCrop}/>)}
               </div>
             </div>
           )}
+
         </div>
       </div>
 
