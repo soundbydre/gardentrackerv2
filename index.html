@@ -1601,7 +1601,7 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
       </div>
 
       {/* Scrollable body */}
-      <div style={{flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 16px 100px"}}>
+      <div style={{flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 16px 180px"}}>
 
         {/* ── OVERVIEW ── */}
         {tab==="overview"&&(
@@ -1897,14 +1897,14 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
         )}
       </div>
 
-      {/* Footer actions - absolute bottom with gradient fade */}
-      <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 16px max(16px,env(safe-area-inset-bottom))",background:`linear-gradient(to top, ${C.bg} 70%, transparent)`,display:"flex",gap:8,flexShrink:0}}>
+      {/* Footer actions - sits above nav bar */}
+      <div style={{position:"absolute",bottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px))",left:0,right:0,padding:"10px 16px 12px",background:`linear-gradient(to top, ${C.bg} 70%, transparent)`,display:"flex",gap:8,flexShrink:0}}>
         <button onClick={()=>{if(!wateredToday){onWater(crop.id);setWateredToday(true);showToast("💧 Watered!");} }} disabled={wateredToday} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"13px",borderRadius:"14px",border:"none",background:wateredToday?"rgba(34,197,94,0.15)":"rgba(59,130,246,0.9)",color:wateredToday?C.green:"white",fontSize:"0.88rem",fontWeight:700,cursor:wateredToday?"default":"pointer",transition:"all 0.2s"}}>💧 {wateredToday?"Watered ✓":"Water"}</button>
         <button onClick={()=>setShowFeed(true)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"13px",borderRadius:"14px",border:"none",background:"rgba(245,158,11,0.9)",color:"white",fontSize:"0.88rem",fontWeight:700,cursor:"pointer"}}>🌿 Feed</button>
       </div>
 
       {/* Toast */}
-      {toast&&<div style={{position:"absolute",bottom:90,left:"50%",transform:"translateX(-50%)",background:"rgba(34,197,94,0.92)",color:"white",fontSize:"12px",fontWeight:600,padding:"7px 16px",borderRadius:"20px",whiteSpace:"nowrap",pointerEvents:"none",boxShadow:"0 4px 16px rgba(34,197,94,0.4)"}}>{toast}</div>}
+      {toast&&<div style={{position:"absolute",bottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px) + 70px)",left:"50%",transform:"translateX(-50%)",background:"rgba(34,197,94,0.92)",color:"white",fontSize:"12px",fontWeight:600,padding:"7px 16px",borderRadius:"20px",whiteSpace:"nowrap",pointerEvents:"none",boxShadow:"0 4px 16px rgba(34,197,94,0.4)"}}>{toast}</div>}
 
       {/* Stage picker */}
       <StagePickerSheet show={showStagePicker} currentStage={crop.stage} onClose={()=>setShowStagePicker(false)} onSelect={(stage,date)=>{setShowStagePicker(false);if(stage==="Done"){onMarkDone({...crop,stage:"Done"});return;}if(stage==="Lost"){onMarkLost({...crop,stage:"Lost"});return;}onChangeStage(crop.id,stage,date);}}/>
