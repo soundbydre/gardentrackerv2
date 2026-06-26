@@ -914,13 +914,13 @@ function SettingsPanel({show,settings,locations,locationMeta,crops,user,syncing,
 
   if(!show) return null;
   return(
-    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",background:C.bg,fontFamily:F.sans}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:190,display:"flex",flexDirection:"column",background:C.bg,fontFamily:F.sans,overflowY:"auto",paddingBottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px))"}}>
       <div style={{padding:"max(54px,calc(var(--sat, env(safe-area-inset-top, 50px)) + 16px)) 18px 14px",flexShrink:0,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:"10px",padding:"8px 14px",color:"rgba(232,245,233,0.6)",fontSize:"0.85rem",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:"1rem"}}>‹</span> Back
-          </button>
           <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1}}>Settings</h1>
+          <div style={{position:"relative",flexShrink:0,marginTop:4}}>
+            <img src={ICON_SRC} alt="Garden Tracker" style={{width:"44px",height:"44px",borderRadius:"11px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
+          </div>
         </div>
       </div>
       <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"20px 16px"}}>
@@ -1165,14 +1165,14 @@ function CropFormPanel({show,initial,locations,cropNames,varieties,containerSize
   const fLabel=(txt,req)=>(<div style={{fontSize:"0.75rem",fontWeight:600,color:"rgba(232,245,233,0.5)",marginBottom:"6px"}}>{txt}{req&&<span style={{color:"#fca5a5"}}> *</span>}</div>);
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",background:C.bg,fontFamily:F.sans}}>
+    <div style={{position:"fixed",inset:0,bottom:0,zIndex:190,display:"flex",flexDirection:"column",background:C.bg,fontFamily:F.sans,paddingBottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px))"}}>
       {/* Header */}
       <div style={{padding:"max(54px,calc(var(--sat, env(safe-area-inset-top, 50px)) + 16px)) 18px 14px",flexShrink:0,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:"10px",padding:"8px 14px",color:"rgba(232,245,233,0.6)",fontSize:"0.85rem",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:"1rem"}}>‹</span> {isEdit?"Cancel":"Cancel"}
-          </button>
-          <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1,textAlign:"right"}}>{isEdit?"Edit Crop":"Add Crop"}</h1>
+          <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1}}>{isEdit?"Edit Crop":"Add Crop"}</h1>
+          <div style={{position:"relative",flexShrink:0,marginTop:4}}>
+            <img src={ICON_SRC} alt="Garden Tracker" style={{width:"44px",height:"44px",borderRadius:"11px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
+          </div>
         </div>
       </div>
 
@@ -1563,14 +1563,12 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
   );
 
   return(
-    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",background:C.bg,fontFamily:F.sans}}>
+    <div style={{position:"fixed",inset:0,bottom:0,zIndex:190,display:"flex",flexDirection:"column",background:C.bg,fontFamily:F.sans,paddingBottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px))"}}>
 
       {/* Hero gradient */}
       <div style={{background:`linear-gradient(135deg,${acc.from},${acc.to})`,padding:"max(54px,calc(var(--sat, env(safe-area-inset-top, 50px)) + 16px)) 18px 18px",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-          <button onClick={onClose} style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:"12px",padding:"10px 16px",color:"rgba(255,255,255,0.9)",fontSize:"0.85rem",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5,minHeight:"40px"}}>
-            <span style={{fontSize:"1.1rem"}}>‹</span> Back
-          </button>
+          <div style={{width:40}}>{/* spacer to keep heading centred */}</div>
           {(()=>{
             const sh=(crop.stageHistory||[]).filter((s,i,a)=>!(a[i-1]&&a[i-1].stage===s.stage&&a[i-1].date===s.date));
             const hasTimeline=sh.length>1||(sh.length===1&&daysAgo(sh[0]?.date)>0);
@@ -2677,11 +2675,8 @@ function TodoPanel({show,crops,todos,onAddTodo,onToggleTodo,onDeleteTodo,onLogFe
             <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1}}>To-Do</h1>
             <div style={{fontSize:"0.78rem",color:C.dashSub,marginTop:5}}>{pending.length} task{pending.length!==1?"s":""} · {overdueCount} feeding alert{overdueCount!==1?"s":""}</div>
           </div>
-          <div onClick={onSettings} style={{position:"relative",cursor:"pointer",flexShrink:0,marginTop:4}}>
+          <div style={{position:"relative",flexShrink:0,marginTop:4}}>
             <img src={ICON_SRC} alt="Garden Tracker" style={{width:"44px",height:"44px",borderRadius:"11px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
-            <div style={{position:"absolute",bottom:"-3px",right:"-3px",width:"17px",height:"17px",borderRadius:"9px",background:C.bgCard,border:"1.5px solid rgba(255,255,255,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="10" height="10" viewBox="0 0 11 11" fill="none"><path d="M5.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1"/><path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.2 2.8l-.7.7M2.8 8.2l-.7.7" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1" strokeLinecap="round"/></svg>
-            </div>
           </div>
         </div>
         {/* Tab bar */}
@@ -2867,11 +2862,8 @@ function WeatherPanel({show,weatherData,location,loading,error,onRefresh,onSetti
           <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1}}>Weather</h1>
           <div style={{fontSize:"0.78rem",color:C.dashSub,marginTop:5}}>{location?`📍 ${location.city}, ${location.state}`:"No location set"}</div>
         </div>
-        <div onClick={onSettings} style={{position:"relative",cursor:"pointer",flexShrink:0,marginTop:4}}>
+        <div style={{position:"relative",flexShrink:0,marginTop:4}}>
           <img src={ICON_SRC} alt="Garden Tracker" style={{width:"44px",height:"44px",borderRadius:"11px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
-          <div style={{position:"absolute",bottom:"-3px",right:"-3px",width:"17px",height:"17px",borderRadius:"9px",background:C.bgCard,border:"1.5px solid rgba(255,255,255,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <svg width="10" height="10" viewBox="0 0 11 11" fill="none"><path d="M5.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1"/><path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.2 2.8l-.7.7M2.8 8.2l-.7.7" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1" strokeLinecap="round"/></svg>
-          </div>
         </div>
       </div>
 
@@ -3884,6 +3876,18 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   },[settings?.zip]);
 
   const [view,setView]         = useState("dashboard");
+  const [navGuardPending,setNavGuardPending] = useState(null); // target view waiting for confirm
+
+  // Intercept nav taps when unsaved changes could be lost
+  const handleNavTap = (targetView, opts={}) => {
+    const formOpen = view==="addCrop" || view==="editCrop";
+    if(formOpen) {
+      setNavGuardPending({view: targetView, opts});
+    } else {
+      if(opts.pre) opts.pre();
+      setView(targetView);
+    }
+  };
   const [prevView,setPrevView] = useState("dashboard");
   const navigate = (v) => { setPrevView(view); setView(v); };
   const [selLoc,setSelLoc]         = useState(null);
@@ -3896,6 +3900,9 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const [showSearch,setShowSearch]   = useState(false);
   const [flatView,setFlatView]       = useState(false);
   const [flatSort,setFlatSort]       = useState("az");
+  const [showHarvests,setShowHarvests] = useState(false);
+  const [showSeasonSummary,setShowSeasonSummary] = useState(false);
+  const [summaryYear,setSummaryYear] = useState(new Date().getFullYear());
   const [expandedWeatherDay,setExpandedWeatherDay] = useState(null);
   const [confirmDeleteSucc,setConfirmDeleteSucc]   = useState(null);
   const [confirmDeleteArchived,setConfirmDeleteArchived] = useState(null);
@@ -4381,26 +4388,24 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
             <h1 style={{fontFamily:F.serif,fontSize:"1.85rem",margin:0,color:"white",fontWeight:700,lineHeight:1}}>{gardenName}</h1>
             <div style={{fontSize:"0.78rem",color:C.dashSub,marginTop:"5px"}}>{active.length} active crop{active.length!==1?"s":""}{activeLocs.length>0?` · ${activeLocs.length} location${activeLocs.length!==1?"s":""}`:""}</div>
           </div>
-          {/* Right icon cluster */}
-          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,flexShrink:0}}>
-            {/* Search icon */}
-            <button onClick={()=>setShowSearch(true)} aria-label="Search crops" style={{width:34,height:34,borderRadius:"10px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
-              <svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="7.5" cy="7.5" r="5" stroke="rgba(232,245,233,0.55)" strokeWidth="1.6"/><path d="M11.5 11.5L16 16" stroke="rgba(232,245,233,0.55)" strokeWidth="1.6" strokeLinecap="round"/></svg>
-            </button>
-            {/* Layout toggle: by-location ↔ flat list */}
-            <button onClick={()=>setFlatView(f=>!f)} aria-label={`Switch to ${flatView?"location":"flat"} view`} style={{width:34,height:34,borderRadius:"10px",background:flatView?"rgba(134,239,172,0.15)":"rgba(255,255,255,0.07)",border:`1px solid ${flatView?"rgba(134,239,172,0.3)":"rgba(255,255,255,0.1)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
-              {flatView?(
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/><rect x="1" y="7" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/><rect x="1" y="12" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/></svg>
-              ):(
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/></svg>
-              )}
-            </button>
-            {/* Settings logo */}
-            <div onClick={()=>setView("settings")} style={{position:"relative",cursor:"pointer",flexShrink:0}}>
-              <img src={ICON_SRC} alt="Settings" style={{width:"34px",height:"34px",borderRadius:"10px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
-              <div style={{position:"absolute",bottom:"-3px",right:"-3px",width:"14px",height:"14px",borderRadius:"7px",background:C.bgCard,border:"1.5px solid rgba(255,255,255,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <svg width="8" height="8" viewBox="0 0 11 11" fill="none"><path d="M5.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1"/><path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.2 2.8l-.7.7M2.8 8.2l-.7.7" stroke="rgba(232,245,233,0.6)" strokeWidth="1.1" strokeLinecap="round"/></svg>
-              </div>
+          {/* Right: logo top-aligned, icon buttons beside it */}
+          <div style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0,marginTop:4}}>
+            {/* Search + layout toggle — vertically centred against logo */}
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:5}}>
+              <button onClick={()=>setShowSearch(true)} aria-label="Search crops" style={{width:34,height:34,borderRadius:"10px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="7.5" cy="7.5" r="5" stroke="rgba(232,245,233,0.55)" strokeWidth="1.6"/><path d="M11.5 11.5L16 16" stroke="rgba(232,245,233,0.55)" strokeWidth="1.6" strokeLinecap="round"/></svg>
+              </button>
+              <button onClick={()=>setFlatView(f=>!f)} aria-label={`Switch to ${flatView?"location":"flat"} view`} style={{width:34,height:34,borderRadius:"10px",background:flatView?"rgba(134,239,172,0.15)":"rgba(255,255,255,0.07)",border:`1px solid ${flatView?"rgba(134,239,172,0.3)":"rgba(255,255,255,0.1)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                {flatView?(
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/><rect x="1" y="7" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/><rect x="1" y="12" width="14" height="3" rx="1" fill="rgba(134,239,172,0.8)"/></svg>
+                ):(
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="rgba(232,245,233,0.45)"/></svg>
+                )}
+              </button>
+            </div>
+            {/* Logo — same top-right position as other panels */}
+            <div style={{position:"relative"}}>
+              <img src={ICON_SRC} alt="Garden Tracker" style={{width:"44px",height:"44px",borderRadius:"11px",objectFit:"cover",boxShadow:"0 0 0 2px rgba(134,239,172,0.22)",display:"block"}}/>
             </div>
           </div>
         </div>
@@ -4595,33 +4600,223 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
             </div>
           )}
 
+          {/* ── Season Summary card ── */}
+          {(()=>{
+            const yr=summaryYear;
+            const inYear=d=>d&&d.startsWith(`${yr}-`);
+            // Crops active during this year (started before year end, not archived before year start or still active)
+            const yearCrops=crops.filter(c=>c.seedDate&&c.seedDate.startsWith(`${yr}-`)||
+              (c.seedDate&&c.seedDate<`${yr+1}-01-01`&&(!c.archived||(c.stageHistory||[]).some(s=>s.date&&s.date.startsWith(`${yr}-`)))));
+            const activeDuringYear=crops.filter(c=>c.seedDate&&c.seedDate<`${yr+1}-01-01`);
+            const startedThisYear=crops.filter(c=>c.seedDate&&inYear(c.seedDate)).length;
+            const lostThisYear=crops.filter(c=>c.stage==="Lost"&&(c.stageHistory||[]).some(s=>s.stage==="Lost"&&inYear(s.date))).length;
+            // Water logs this year
+            const totalWaterings=crops.reduce((n,c)=>{
+              return n+(c.waterLog||[]).filter(w=>!w.auto&&inYear(w.date)).length;
+            },0);
+            // Rain this year
+            const rainDays=new Set();
+            crops.forEach(c=>(c.waterLog||[]).filter(w=>w.auto&&w.source==="rain"&&inYear(w.date)).forEach(w=>rainDays.add(w.date?.slice(0,10))));
+            const totalRainDays=rainDays.size;
+            // Feed logs this year
+            const totalFeedings=crops.reduce((n,c)=>{
+              return n+(c.feedLog||[]).filter(f=>inYear(f.date)).length;
+            },0);
+            // Harvests this year
+            const harvestByKey={};
+            crops.forEach(c=>{
+              (c.harvests||[]).filter(h=>inYear(h.date)&&h.amount).forEach(h=>{
+                const k=`${c.name}::${c.variety||c.name}`;
+                if(!harvestByKey[k]) harvestByKey[k]={name:c.name,variety:c.variety||c.name,total:0,unit:h.unit||"g",count:0,emoji:cropEmoji(c),accent:cropAccent(c)};
+                harvestByKey[k].total+=Number(h.amount);
+                harvestByKey[k].count++;
+              });
+            });
+            const harvestRows=Object.values(harvestByKey).sort((a,b)=>b.total-a.total);
+            const totalHarvestLogs=harvestRows.reduce((n,r)=>n+r.count,0);
+            // Stats for inline card preview
+            const hasAnyData=startedThisYear>0||totalWaterings>0||totalFeedings>0||totalHarvestLogs>0;
+            if(!hasAnyData) return null;
+            const availableYears=[...new Set(crops.map(c=>c.seedDate?.slice(0,4)).filter(Boolean).map(Number))].sort((a,b)=>b-a);
+            const currentYear=new Date().getFullYear();
+            if(!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
+            return(
+              <>
+                <button onClick={()=>setShowSeasonSummary(true)} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:"14px",padding:"13px 14px",cursor:"pointer",textAlign:"left"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)"}}>Season Summary · {yr}</div>
+                    <span style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.3)"}}>view all ›</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+                    <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"10px",padding:"8px 10px"}}>
+                      <div style={{fontSize:"1.2rem",fontWeight:700,color:"white",lineHeight:1}}>{startedThisYear}</div>
+                      <div style={{fontSize:"0.68rem",color:"rgba(232,245,233,0.4)",marginTop:3}}>Crops started</div>
+                    </div>
+                    <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"10px",padding:"8px 10px"}}>
+                      <div style={{fontSize:"1.2rem",fontWeight:700,color:"white",lineHeight:1}}>{totalWaterings}</div>
+                      <div style={{fontSize:"0.68rem",color:"rgba(232,245,233,0.4)",marginTop:3}}>Waterings logged</div>
+                    </div>
+                    <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"10px",padding:"8px 10px"}}>
+                      <div style={{fontSize:"1.2rem",fontWeight:700,color:"white",lineHeight:1}}>{totalFeedings}</div>
+                      <div style={{fontSize:"0.68rem",color:"rgba(232,245,233,0.4)",marginTop:3}}>Feedings logged</div>
+                    </div>
+                    <div style={{background:"rgba(255,255,255,0.04)",borderRadius:"10px",padding:"8px 10px"}}>
+                      <div style={{fontSize:"1.2rem",fontWeight:700,color:totalHarvestLogs>0?"rgba(134,239,172,0.9)":"white",lineHeight:1}}>{totalHarvestLogs}</div>
+                      <div style={{fontSize:"0.68rem",color:"rgba(232,245,233,0.4)",marginTop:3}}>Harvests logged</div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Season Summary sheet */}
+                {showSeasonSummary&&(
+                  <div style={{position:"fixed",inset:0,zIndex:300}} onClick={()=>setShowSeasonSummary(false)}>
+                    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+                    <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:0,left:0,right:0,background:"#1a2b1c",borderRadius:"20px 20px 0 0",paddingBottom:"max(24px,env(safe-area-inset-bottom))",maxHeight:"88%",display:"flex",flexDirection:"column"}}>
+                      {/* Sheet header with year selector */}
+                      <div style={{padding:"16px 18px 14px",flexShrink:0,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+                        <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.2)",margin:"0 auto 16px"}}/>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <div style={{fontSize:"1.1rem",fontWeight:700,color:"white"}}>Season Summary</div>
+                          {/* Year selector */}
+                          <div style={{display:"flex",alignItems:"center",gap:2,background:"rgba(255,255,255,0.07)",borderRadius:"10px",padding:"3px"}}>
+                            <button onClick={()=>setSummaryYear(y=>Math.max(y-1,availableYears[availableYears.length-1]))} style={{width:28,height:28,borderRadius:"8px",background:"none",border:"none",color:"rgba(232,245,233,0.5)",cursor:"pointer",fontSize:"1rem",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                            <span style={{fontSize:"0.9rem",fontWeight:700,color:"white",minWidth:36,textAlign:"center"}}>{summaryYear}</span>
+                            <button onClick={()=>setSummaryYear(y=>Math.min(y+1,currentYear))} disabled={summaryYear>=currentYear} style={{width:28,height:28,borderRadius:"8px",background:"none",border:"none",color:summaryYear>=currentYear?"rgba(232,245,233,0.15)":"rgba(232,245,233,0.5)",cursor:summaryYear>=currentYear?"default":"pointer",fontSize:"1rem",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{flex:1,overflowY:"auto",padding:"14px 18px 16px",display:"flex",flexDirection:"column",gap:14}}>
+
+                        {/* Overview stats */}
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                          {[
+                            {label:"Crops started",val:startedThisYear,color:"white"},
+                            {label:"Crops lost",val:lostThisYear,color:lostThisYear>0?"#f87171":"white"},
+                            {label:"Waterings",val:totalWaterings,color:"white"},
+                            {label:"Feedings",val:totalFeedings,color:"white"},
+                            {label:"Rain days",val:totalRainDays,color:totalRainDays>0?"#93c5fd":"white"},
+                            {label:"Harvests",val:totalHarvestLogs,color:totalHarvestLogs>0?"rgba(134,239,172,0.9)":"white"},
+                          ].map((s,i)=>(
+                            <div key={i} style={{background:"rgba(255,255,255,0.05)",borderRadius:"12px",padding:"10px 12px"}}>
+                              <div style={{fontSize:"1.4rem",fontWeight:700,color:s.color,lineHeight:1}}>{s.val}</div>
+                              <div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.4)",marginTop:4}}>{s.label}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Harvest breakdown */}
+                        {harvestRows.length>0&&(
+                          <div>
+                            <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)",marginBottom:8}}>Harvest breakdown</div>
+                            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                              {harvestRows.map((r,i)=>(
+                                <div key={i} style={{background:"rgba(255,255,255,0.05)",borderRadius:"12px",padding:"11px 13px",display:"flex",alignItems:"center",gap:11}}>
+                                  <div style={{width:34,height:34,borderRadius:"9px",background:`${r.accent.from}33`,border:`1px solid ${r.accent.from}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.1rem",flexShrink:0}}>{r.emoji}</div>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.9)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.variety}</div>
+                                    <div style={{fontSize:"0.7rem",color:"rgba(232,245,233,0.35)",marginTop:2}}>{r.count} harvest{r.count!==1?"s":""}</div>
+                                  </div>
+                                  <div style={{fontSize:"1rem",fontWeight:700,color:"rgba(134,239,172,0.9)",flexShrink:0,textAlign:"right"}}>
+                                    {Math.round(r.total*10)/10}
+                                    <span style={{fontSize:"0.72rem",fontWeight:500,color:"rgba(134,239,172,0.6)",marginLeft:3}}>{r.unit}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Crops started this year */}
+                        {startedThisYear>0&&(
+                          <div>
+                            <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(134,239,172,0.5)",marginBottom:8}}>Crops started</div>
+                            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                              {crops.filter(c=>c.seedDate&&inYear(c.seedDate)).sort((a,b)=>(a.seedDate||"").localeCompare(b.seedDate||"")).map((c,i)=>{
+                                const acc=cropAccent(c);
+                                return(
+                                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"rgba(255,255,255,0.04)",borderRadius:"10px"}}>
+                                    <div style={{width:30,height:30,borderRadius:"8px",background:`${acc.from}33`,border:`1px solid ${acc.from}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>{cropEmoji(c)}</div>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{fontSize:"0.85rem",fontWeight:500,color:"rgba(232,245,233,0.85)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.variety||c.name}</div>
+                                      <div style={{fontSize:"0.7rem",color:"rgba(232,245,233,0.35)",marginTop:1}}>{fmtDate(c.seedDate)}</div>
+                                    </div>
+                                    <div style={{fontSize:"0.72rem",color:c.stage==="Lost"?"#f87171":c.stage==="Done"?"rgba(134,239,172,0.6)":"rgba(232,245,233,0.35)",flexShrink:0,fontWeight:c.stage==="Lost"?600:400}}>{c.stage}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
         </div>
       </div>
 
-      {/* Bottom Nav - design spec: Home · To-Do · [FAB] · Weather · Report */}
       <div data-nav="true" style={{flexShrink:0,background:C.bg,borderTop:"1px solid rgba(255,255,255,0.07)",paddingBottom:"max(var(--sab, env(safe-area-inset-bottom, 0px)), 8px)",paddingTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-around",zIndex:200,touchAction:"none",userSelect:"none"}}>
-        <button onClick={()=>setView("dashboard")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="dashboard"?C.green:"rgba(232,245,233,0.28)",touchAction:"manipulation",flex:1}}>
+        <button onClick={()=>handleNavTap("dashboard")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="dashboard"?C.green:"rgba(232,245,233,0.28)",touchAction:"manipulation",flex:1}}>
           <svg width="24" height="24" viewBox="0 0 22 22" fill="none"><path d="M3 9.5L11 3l8 6.5V19a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M8 20v-7h6v7" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>
           <span style={{fontSize:"12px",fontWeight:600,lineHeight:1}}>Home</span>
         </button>
-        <button onClick={()=>setView("todo")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="todo"?C.green:"rgba(232,245,233,0.28)",position:"relative",touchAction:"manipulation",flex:1}}>
+        <button onClick={()=>handleNavTap("todo")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="todo"?C.green:"rgba(232,245,233,0.28)",position:"relative",touchAction:"manipulation",flex:1}}>
           {taskCount>0&&<span style={{position:"absolute",top:0,left:"50%",transform:"translateX(4px)",background:"#ef4444",color:"white",fontSize:"9px",fontWeight:700,minWidth:"16px",height:"16px",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,pointerEvents:"none"}}>{taskCount}</span>}
           <svg width="24" height="24" viewBox="0 0 22 22" fill="none"><rect x="3" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M7 9l2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M7 14h8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
           <span style={{fontSize:"12px",fontWeight:600,lineHeight:1}}>To-Do</span>
         </button>
         {/* Floating FAB */}
-        <button onClick={()=>{setEditCrop(null);navigate("addCrop");}} style={{width:"52px",height:"52px",borderRadius:"26px",background:C.green,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 0 6px rgba(34,197,94,0.15), 0 4px 16px rgba(34,197,94,0.4)",transform:"translateY(-8px)",flexShrink:0,touchAction:"manipulation"}}>
+        <button onClick={()=>{
+          const formOpen=view==="addCrop"||view==="editCrop";
+          if(formOpen){
+            setNavGuardPending({view:"addCrop",opts:{pre:()=>setEditCrop(null)}});
+          } else {
+            setEditCrop(null);navigate("addCrop");
+          }
+        }} style={{width:"52px",height:"52px",borderRadius:"26px",background:C.green,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 0 6px rgba(34,197,94,0.15), 0 4px 16px rgba(34,197,94,0.4)",transform:"translateY(-8px)",flexShrink:0,touchAction:"manipulation"}}>
           <svg width="24" height="24" viewBox="0 0 22 22" fill="none"><path d="M11 5v12M5 11h12" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/></svg>
         </button>
-        <button onClick={()=>{if(settings?.zip&&!weatherData)loadWeather(settings.zip);setView("weather");}} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="weather"?C.green:"rgba(232,245,233,0.28)",touchAction:"manipulation",minWidth:"52px",flex:1}}>
+        <button onClick={()=>handleNavTap("weather",{pre:()=>{if(settings?.zip&&!weatherData)loadWeather(settings.zip);}})} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="weather"?C.green:"rgba(232,245,233,0.28)",touchAction:"manipulation",minWidth:"52px",flex:1}}>
           <span style={{fontSize:"18px",lineHeight:1}}>{weatherLoading?"⟳":todayW?todayW.info.emoji:"🌡"}</span>
           <span style={{fontSize:"10px",fontWeight:700,lineHeight:1,minWidth:"40px",textAlign:"center",display:"block"}}>{todayW?`${Math.round(todayW.currentTemp)}°`:"Weather"}</span>
         </button>
-        <button onClick={()=>setView("report")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="report"?C.green:"rgba(232,245,233,0.28)",touchAction:"manipulation",flex:1}}>
-          <svg width="24" height="24" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.7"/><path d="M7 14v2M11 11v5M15 8v8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
-          <span style={{fontSize:"12px",fontWeight:600,lineHeight:1}}>Report</span>
+        <button onClick={()=>handleNavTap("settings")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",background:"none",border:"none",cursor:"pointer",padding:"6px 0",color:view==="settings"?C.green:"rgba(232,245,233,0.28)",touchAction:"manipulation",flex:1}}>
+          <svg width="24" height="24" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="2.5" stroke="currentColor" strokeWidth="1.6"/><path d="M11 3v2M11 17v2M3 11h2M17 11h2M5.1 5.1l1.4 1.4M15.5 15.5l1.4 1.4M15.5 6.5l1.4-1.4M5.1 16.9l1.4-1.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+          <span style={{fontSize:"12px",fontWeight:600,lineHeight:1}}>Settings</span>
         </button>
       </div>
+
+      {/* Nav guard — fires when crop form has unsaved changes */}
+      {navGuardPending&&(
+        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setNavGuardPending(null)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"relative",width:"100%",background:"#1a2b1c",borderRadius:"20px 20px 0 0",padding:"20px 20px max(28px,env(safe-area-inset-bottom))",zIndex:1}}>
+            <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.2)",margin:"0 auto 20px"}}/>
+            <div style={{fontSize:"1.05rem",fontWeight:700,color:"white",marginBottom:6}}>Unsaved changes</div>
+            <div style={{fontSize:"0.85rem",color:"rgba(232,245,233,0.5)",marginBottom:24,lineHeight:1.5}}>You have unsaved crop data. Navigating away will discard your changes.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <button onClick={()=>{
+                const pending=navGuardPending;
+                setNavGuardPending(null);
+                setEditCrop(null);
+                if(pending.opts?.pre) pending.opts.pre();
+                if(pending.view==="addCrop") navigate("addCrop");
+                else setView(pending.view);
+              }} style={{width:"100%",padding:"14px",borderRadius:"12px",background:"#ef4444",border:"none",color:"white",fontSize:"0.95rem",fontWeight:700,cursor:"pointer"}}>
+                Leave anyway
+              </button>
+              <button onClick={()=>setNavGuardPending(null)} style={{width:"100%",padding:"14px",borderRadius:"12px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(232,245,233,0.8)",fontSize:"0.95rem",fontWeight:600,cursor:"pointer"}}>
+                Stay and keep editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Location Action Sheet */}
       <LocationActionSheet show={!!selLocSheet} location={selLocSheet} crops={crops} nutrients={nutrients}
         sort={locSorts[selLocSheet]||"az"}
