@@ -449,10 +449,22 @@ const WMO_CODES = {
 };
 function decodeWMO(code){ return WMO_CODES[code]||{label:"Unknown",emoji:"🌡",desc:""}; }
 
+// fetch wrapper with an abort timeout so a slow/down third-party service
+// can't leave a loading indicator spinning forever
+async function fetchWithTimeout(url, ms=6000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), ms);
+  try {
+    return await fetch(url, {signal:ctrl.signal});
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // Geocode a US ZIP code -> {lat, lon, city, state}
 async function geocodeZip(zip) {
   try {
-    const r = await fetch(`https://api.zippopotam.us/us/${zip}`);
+    const r = await fetchWithTimeout(`https://api.zippopotam.us/us/${zip}`, 5000);
     if (!r.ok) return null;
     const j = await r.json();
     const p = j.places?.[0]; if (!p) return null;
@@ -465,7 +477,7 @@ async function lookupZoneFromZip(zip) {
     const geo = await geocodeZip(zip);
     if (!geo) return null;
     // Use the phzmapi.org public API for USDA hardiness zone lookup
-    const r = await fetch(`https://phzmapi.org/${geo.lat}/${geo.lon}.json`);
+    const r = await fetchWithTimeout(`https://phzmapi.org/${geo.lat}/${geo.lon}.json`, 5000);
     if (!r.ok) return null;
     const j = await r.json();
     // Response: { zone: "7a", ... }
@@ -477,7 +489,7 @@ async function lookupZoneFromZip(zip) {
 async function fetchWeather(lat, lon) {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,weather_code,precipitation,wind_speed_10m,wind_gusts_10m,uv_index&hourly=temperature_2m,weather_code,precipitation_probability,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_mean,precipitation_probability_max,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&forecast_days=7&timezone=auto`;
-    const r = await fetch(url); if (!r.ok) return null;
+    const r = await fetchWithTimeout(url, 8000); if (!r.ok) return null;
     return await r.json();
   } catch { return null; }
 }
@@ -2720,7 +2732,6 @@ function TodoPanel({show,crops,todos,onAddTodo,onEditTodo,onToggleTodo,onDeleteT
         // Also find any crops with same name+variety (including ones without successionDays) to get latest seed date
         const allSameVariety=(crops||[]).filter(x=>!x.archived&&x.name===c.name&&x.variety===c.variety&&x.seedDate);
         const latestSeedDate=allSameVariety.map(x=>x.seedDate).sort().pop()||c.seedDate;
-        console.log('Succ debug:',c.name,c.variety,'successionDays=',c.successionDays,'allSameVariety seeds=',allSameVariety.map(x=>x.seedDate),'latestSeedDate=',latestSeedDate,'nextSow=',succDate(latestSeedDate,c.successionDays),'diff=',daysUntil(succDate(latestSeedDate,c.successionDays)));
         const oldestCrop=sameCrops.sort((a,b)=>a.seedDate.localeCompare(b.seedDate))[0]||c;
         const nextSowDate=succDate(latestSeedDate,c.successionDays);
         const diff=daysUntil(nextSowDate);
@@ -3808,15 +3819,23 @@ Priority order for your recommendation:
 
 Give ONE concise actionable recommendation (1-2 sentences max). Start with a relevant emoji. Be specific. No bullet points.`;
 
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:150,
-          messages:[{role:"user",content:prompt}]
-        })
-      });
+      const aiCtrl=new AbortController();
+      const aiTimer=setTimeout(()=>aiCtrl.abort(),12000);
+      let res;
+      try {
+        res=await fetch("https://api.anthropic.com/v1/messages",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            model:"claude-sonnet-4-20250514",
+            max_tokens:150,
+            messages:[{role:"user",content:prompt}]
+          }),
+          signal:aiCtrl.signal
+        });
+      } finally {
+        clearTimeout(aiTimer);
+      }
       const json=await res.json();
       const text=json?.content?.[0]?.text?.trim();
       if(text){
