@@ -2078,9 +2078,7 @@ function FeedLogSheet({show,crop,nutrients,onClose,onAddFeed,onUpdateSchedule,on
           <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Nutrient / Fertilizer</div>
           <input value={input} onChange={e=>{setInput(e.target.value);setShowDrop(true);}} onFocus={()=>setShowDrop(true)} placeholder="Type or choose..." style={{...iStyle,width:"100%"}}/>
           {input&&schedules[input.trim()]&&<div style={{marginTop:5,fontSize:"0.75rem",color:C.green,fontWeight:500}}>Schedule: every {scheduleDays(schedules[input.trim()])}d</div>}
-          {showDrop&&(<>
-            {/* invisible overlay catches outside taps to close the dropdown cleanly */}
-            <div onClick={()=>setShowDrop(false)} style={{position:"fixed",inset:0,zIndex:40}}/>
+          {showDrop&&(
             <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1a2b1c",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"12px",boxShadow:"0 8px 28px rgba(0,0,0,0.5)",zIndex:50,maxHeight:240,overflowY:"auto",marginTop:4}}>
             {input.trim()&&!ranked.map(n=>n.toLowerCase()).includes(input.trim().toLowerCase())&&<div onClick={()=>selectN(input.trim())} style={{padding:"14px",cursor:"pointer",fontSize:"0.9rem",color:C.green,fontWeight:600,borderBottom:"1px solid rgba(255,255,255,0.07)",background:"rgba(34,197,94,0.06)"}}>+ Add "{input.trim()}"</div>}
             {filtered.map(n=>{const sched=schedules[n];const count=usageCounts[n]||0;return(
@@ -2093,32 +2091,32 @@ function FeedLogSheet({show,crop,nutrients,onClose,onAddFeed,onUpdateSchedule,on
               </div>
             );})}
             </div>
-          </>)}
+          )}
         </div>
         <div>
           <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Quantity <span style={{fontWeight:400,color:"rgba(232,245,233,0.25)"}}>(optional)</span></div>
           <div style={{display:"flex",gap:8}}>
-            <input type="number" min="0" step="any" value={qty} onChange={e=>setQty(e.target.value)} placeholder="e.g. 2" style={{...iStyle,flex:1}}/>
-            <select value={unit} onChange={e=>setUnit(e.target.value)} style={{...iStyle,padding:"11px 10px",color:"rgba(232,245,233,0.7)"}}>{FEED_UNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
+            <input type="number" min="0" step="any" value={qty} onFocus={()=>setShowDrop(false)} onChange={e=>setQty(e.target.value)} placeholder="e.g. 2" style={{...iStyle,flex:1}}/>
+            <select value={unit} onFocus={()=>setShowDrop(false)} onChange={e=>setUnit(e.target.value)} style={{...iStyle,padding:"11px 10px",color:"rgba(232,245,233,0.7)"}}>{FEED_UNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
           </div>
         </div>
         <div>
-          <div onClick={()=>setIsLiquid(v=>!v)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:isLiquid?"rgba(59,130,246,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${isLiquid?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
+          <div onClick={()=>{setShowDrop(false);setIsLiquid(v=>!v);}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:isLiquid?"rgba(59,130,246,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${isLiquid?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
             <div style={{width:20,height:20,borderRadius:"6px",flexShrink:0,transition:"all 0.15s",background:isLiquid?"#3b82f6":"transparent",border:`1.5px solid ${isLiquid?"#3b82f6":"rgba(255,255,255,0.25)"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
               {isLiquid&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             </div>
             <div><div style={{fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>Diluted in water</div><div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",marginTop:1}}>Check if mixed with water before applying</div></div>
           </div>
           {isLiquid&&<div style={{display:"flex",gap:8,marginTop:8}}>
-            <input type="number" min="0" step="any" value={waterQty} onChange={e=>setWaterQty(e.target.value)} placeholder="e.g. 1" style={{...iStyle,flex:1}}/>
-            <select value={waterUnit} onChange={e=>setWaterUnit(e.target.value)} style={{...iStyle,padding:"11px 10px",color:"rgba(232,245,233,0.7)"}}>{WATER_UNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
+            <input type="number" min="0" step="any" value={waterQty} onFocus={()=>setShowDrop(false)} onChange={e=>setWaterQty(e.target.value)} placeholder="e.g. 1" style={{...iStyle,flex:1}}/>
+            <select value={waterUnit} onFocus={()=>setShowDrop(false)} onChange={e=>setWaterUnit(e.target.value)} style={{...iStyle,padding:"11px 10px",color:"rgba(232,245,233,0.7)"}}>{WATER_UNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
           </div>}
         </div>
         <div>
           <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Date &amp; Time</div>
           <div style={{display:"flex",gap:8}}>
-            <input type="date" value={feedDate} onChange={e=>setFeedDate(e.target.value)} style={{...iStyle,flex:1}}/>
-            <input type="time" value={feedTime} onChange={e=>setFeedTime(e.target.value)} style={{...iStyle,flex:1}}/>
+            <input type="date" value={feedDate} onFocus={()=>setShowDrop(false)} onChange={e=>setFeedDate(e.target.value)} style={{...iStyle,flex:1}}/>
+            <input type="time" value={feedTime} onFocus={()=>setShowDrop(false)} onChange={e=>setFeedTime(e.target.value)} style={{...iStyle,flex:1}}/>
           </div>
         </div>
         <button onClick={handleSave} disabled={!input.trim()} style={{background:saved?"rgba(34,197,94,0.15)":!input.trim()?"rgba(255,255,255,0.06)":C.green,border:saved?`1px solid ${C.green}`:"none",color:saved?C.green:!input.trim()?"rgba(232,245,233,0.25)":"white",borderRadius:"12px",padding:"14px",fontSize:"0.92rem",fontWeight:700,cursor:input.trim()?"pointer":"not-allowed",transition:"all 0.25s"}}>{saved?"✓ Saved!":"Save Feed Log"}</button>
@@ -2519,31 +2517,30 @@ function FeedAllSheet({show,location,crops,nutrients,onFeedAll,onClose}) {
           <div style={{position:"relative"}}>
             <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Nutrient / Fertilizer</div>
             <input value={input} onChange={e=>{setInput(e.target.value);setShowDrop(true);}} onFocus={()=>setShowDrop(true)} placeholder="Type or choose..." style={{...iStyle,width:"100%"}}/>
-            {showDrop&&(<>
-              <div onClick={()=>setShowDrop(false)} style={{position:"fixed",inset:0,zIndex:40}}/>
+            {showDrop&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1a2b1c",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"10px",boxShadow:"0 8px 28px rgba(0,0,0,0.5)",zIndex:50,maxHeight:220,overflowY:"auto",marginTop:4}}>
               {filtered.map(n=><div key={n} onClick={()=>{setInput(n);setShowDrop(false);}} style={{padding:"13px 14px",cursor:"pointer",fontSize:"0.9rem",color:"rgba(232,245,233,0.85)",borderBottom:"1px solid rgba(255,255,255,0.05)",minHeight:"44px",display:"flex",alignItems:"center"}}>{n}</div>)}
               </div>
-            </>)}
+            )}
           </div>
           <div>
             <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Quantity <span style={{fontWeight:400,opacity:0.5}}>(optional)</span></div>
             <div style={{display:"flex",gap:8}}>
-              <input type="number" min="0" step="any" value={qty} onChange={e=>setQty(e.target.value)} placeholder="e.g. 2" style={{...iStyle,flex:1}}/>
-              <select value={unit} onChange={e=>{setUnit(e.target.value);e.target.blur();}} style={{...iStyle,padding:"11px 10px"}}>{FUNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
+              <input type="number" min="0" step="any" value={qty} onFocus={()=>setShowDrop(false)} onChange={e=>setQty(e.target.value)} placeholder="e.g. 2" style={{...iStyle,flex:1}}/>
+              <select value={unit} onFocus={()=>setShowDrop(false)} onChange={e=>{setUnit(e.target.value);e.target.blur();}} style={{...iStyle,padding:"11px 10px"}}>{FUNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
             </div>
           </div>
-          <div onClick={()=>setIsLiquid(v=>!v)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:isLiquid?"rgba(59,130,246,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${isLiquid?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
+          <div onClick={()=>{setShowDrop(false);setIsLiquid(v=>!v);}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:isLiquid?"rgba(59,130,246,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${isLiquid?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
             <div style={{width:20,height:20,borderRadius:"6px",flexShrink:0,background:isLiquid?"#3b82f6":"transparent",border:`1.5px solid ${isLiquid?"#3b82f6":"rgba(255,255,255,0.25)"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
               {isLiquid&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             </div>
             <span style={{fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>Diluted in water</span>
           </div>
           {isLiquid&&<div style={{display:"flex",gap:8}}>
-            <input type="number" min="0" step="any" value={waterQty} onChange={e=>setWaterQty(e.target.value)} placeholder="e.g. 1" style={{...iStyle,flex:1}}/>
-            <select value={waterUnit} onChange={e=>{setWaterUnit(e.target.value);e.target.blur();}} style={{...iStyle,padding:"11px 10px"}}>{WUNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
+            <input type="number" min="0" step="any" value={waterQty} onFocus={()=>setShowDrop(false)} onChange={e=>setWaterQty(e.target.value)} placeholder="e.g. 1" style={{...iStyle,flex:1}}/>
+            <select value={waterUnit} onFocus={()=>setShowDrop(false)} onChange={e=>{setWaterUnit(e.target.value);e.target.blur();}} style={{...iStyle,padding:"11px 10px"}}>{WUNITS.map(u=><option key={u} style={{background:"#182218"}}>{u}</option>)}</select>
           </div>}
-          <div onClick={()=>setSetSchedule(v=>!v)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:setSchedule?"rgba(34,197,94,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${setSchedule?"rgba(34,197,94,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
+          <div onClick={()=>{setShowDrop(false);setSetSchedule(v=>!v);}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:setSchedule?"rgba(34,197,94,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${setSchedule?"rgba(34,197,94,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
             <div style={{width:20,height:20,borderRadius:"6px",flexShrink:0,background:setSchedule?C.green:"transparent",border:`1.5px solid ${setSchedule?C.green:"rgba(255,255,255,0.25)"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
               {setSchedule&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             </div>
