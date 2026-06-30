@@ -1491,7 +1491,7 @@ function CropFormPanel({show,initial,locations,cropNames,varieties,containerSize
 function DarkSheet({show,onClose,title,children}) {
   if(!show) return null;
   return(
-    <div style={{position:"fixed",inset:0,zIndex:300}}>
+    <div style={{position:"fixed",inset:0,zIndex:350}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
       <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:0,left:0,right:0,background:"#1a2b1c",borderRadius:"20px 20px 0 0",paddingBottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px) + 8px)",maxHeight:"90%",display:"flex",flexDirection:"column"}}>
         <div style={{display:"flex",justifyContent:"center",padding:"12px 0 0"}}>
@@ -1596,16 +1596,33 @@ function CropDetailPanel({show,crop,allCrops,locations,nutrients,onClose,onEdit,
       const sowLabel=crop.startType==="indoor"?"Started indoors":crop.startType==="clone"?"Clone/cutting acquired":"Sown";
       const firstEntry=(crop.stageHistory||[])[0];
       const startContainer=firstEntry?.inContainer&&firstEntry?.containerSize?`🪴 ${firstEntry.containerSize}`:firstEntry?.inContainer?"🪴 Container":null;
-      const sowDetail=[crop.startType==="indoor"?crop.notes?.find(n=>n.auto&&n.text?.startsWith("Transplanted from"))?.text?.match(/from (.+?) to/)?.[1]||crop.location:crop.location,startContainer].filter(Boolean).join(" · ")||null;
+      // Show where the crop started — the "from" location of its first transplant note, if it has
+      // ever been transplanted — rather than crop.location, which reflects where it is now.
+      // This applies regardless of start type: a direct-sown crop transplanted later started
+      // wherever it was originally sown, not wherever it currently sits.
+      let sowLoc=crop.location;
+      const firstTransplantNote=(crop.notes||[]).filter(n=>n.auto&&n.text?.startsWith("Transplanted from")).sort((a,b)=>(a.date||"").localeCompare(b.date||""))[0];
+      if(firstTransplantNote) sowLoc=firstTransplantNote.text?.match(/from (.+?) to/)?.[1]||crop.location;
+      const sowDetail=[sowLoc,startContainer].filter(Boolean).join(" · ")||null;
       entries.push({type:"lifecycle",date:crop.seedDate,data:{emoji:"🌱",label:sowLabel,detail:sowDetail?`📍 ${sowDetail}`:null},idx:-1});
     }
-    if(crop.startType==="indoor"&&crop.transplantDate){
-      const prevLoc=crop.notes?.find(n=>n.auto&&n.text?.startsWith("Transplanted from"))?.text?.match(/from (.+?) to/)?.[1]||null;
-      const transplantEntry=(crop.stageHistory||[]).find(s=>s.transplant);
-      const tContainer=transplantEntry?.inContainer&&transplantEntry?.containerSize?`🪴 ${transplantEntry.containerSize}`:transplantEntry?.inContainer?"🪴 Container":null;
-      const tDetail=[prevLoc&&`From ${prevLoc}`,crop.location&&`→ ${crop.location}`,tContainer].filter(Boolean).join(" · ");
-      entries.push({type:"lifecycle",date:crop.transplantDate,data:{emoji:"🌿",label:"Transplanted outdoors",detail:tDetail||null},idx:-2});
-    }
+    // Transplant entries: pair each transplant stage-history record with its corresponding
+    // "Transplanted from X to Y" note in chronological order (both are written together when a
+    // transplant happens, so the Nth transplant entry lines up with the Nth transplant note —
+    // this avoids fragile date-string matching across two differently-formatted date fields).
+    const transplantStages=(crop.stageHistory||[]).map((s,i)=>({s,i})).filter(({s,i})=>s.transplant&&i>0)
+      .sort((a,b)=>(a.s.date||"").localeCompare(b.s.date||""));
+    const transplantNotes=(crop.notes||[]).filter(n=>n.auto&&n.text?.startsWith("Transplanted from"))
+      .sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+    transplantStages.forEach(({s,i},idx)=>{
+      const note=transplantNotes[idx];
+      const locMatch=note?.text?.match(/from (.+?) to (.+?) on/);
+      const samePlace=locMatch&&locMatch[1]===locMatch[2];
+      const tContainer=s.inContainer&&s.containerSize?`🪴 ${s.containerSize}`:s.inContainer?"🪴 Container":null;
+      const tDetail=[locMatch?(samePlace?locMatch[1]:`${locMatch[1]} → ${locMatch[2]}`):null,tContainer].filter(Boolean).join(" · ");
+      const isFirstIndoorMove=crop.startType==="indoor"&&idx===0;
+      entries.push({type:"lifecycle",date:s.date,data:{emoji:samePlace?"🪴":isFirstIndoorMove?"🌿":"📦",label:samePlace?"Repotted":isFirstIndoorMove?"Transplanted outdoors":"Transplanted",detail:tDetail||null},idx:-1000-i});
+    });
     (crop.stageHistory||[]).forEach((s,i)=>{
       const stageEmoji={Seed:"🌱",Seedling:"🌿",Vegetative:"🍃",Flowering:"🌸",Fruiting:"🍅",Harvesting:"🌾",Done:"✓",Lost:"✗"};
       if(i===0) return; // skip initial entry
@@ -2164,32 +2181,36 @@ function TransplantSheet({show,crop,locations,onClose,onTransplant}) {
   const [date,setDate]=useState(todayStr());
   const [container,setContainer]=useState(false);
   const [contSize,setContSize]=useState("");
-  const available=(locations||[]).filter(l=>l!==crop?.location);
+  const otherLocations=(locations||[]).filter(l=>l!==crop?.location);
   useEffect(()=>{if(show){setToLoc("");setDate(todayStr());setContainer(false);setContSize("");}}, [show,crop?.location]);
   const iStyle={background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"10px",padding:"11px 14px",fontSize:"16px",color:"white",outline:"none"};
+  const movingLoc=!!toLoc; // blank = staying put
+  const hasChange=movingLoc||(container&&contSize.trim());
+  const canSubmit=hasChange&&!(container&&!contSize.trim());
   return(
-    <DarkSheet show={show} onClose={onClose} title="Transplant / Move">
+    <DarkSheet show={show} onClose={onClose} title="Transplant / Repot">
       <div style={{display:"flex",flexDirection:"column",gap:14,paddingTop:4}}>
         <div style={{background:"rgba(255,255,255,0.05)",borderRadius:"10px",padding:"11px 14px",border:"1px solid rgba(255,255,255,0.08)",fontSize:"0.88rem",color:"rgba(232,245,233,0.55)"}}>Currently in: <span style={{color:"rgba(232,245,233,0.88)",fontWeight:600}}>{crop?.location}</span>{crop?.containerSize&&<span style={{color:"rgba(232,245,233,0.4)"}}> · {crop.containerSize}</span>}</div>
         <div>
-          <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Move to *</div>
+          <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Move to <span style={{fontWeight:400,opacity:0.6}}>(optional — leave blank to stay put)</span></div>
           <select value={toLoc} onChange={e=>setToLoc(e.target.value)} style={{...iStyle,width:"100%",appearance:"none",color:toLoc?"white":"rgba(232,245,233,0.3)"}}>
-            <option value="" style={{background:"#182218"}}>Select location...</option>
-            {available.map(l=><option key={l} value={l} style={{background:"#182218"}}>{l}</option>)}
+            <option value="" style={{background:"#182218"}}>Stay in {crop?.location||"current location"}</option>
+            {otherLocations.map(l=><option key={l} value={l} style={{background:"#182218"}}>{l}</option>)}
           </select>
         </div>
         <div>
-          <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Transplant Date</div>
+          <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Date</div>
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...iStyle,width:"100%",colorScheme:"dark"}}/>
         </div>
         <div onClick={()=>setContainer(v=>!v)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:container?"rgba(59,130,246,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${container?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
           <div style={{width:20,height:20,borderRadius:"6px",flexShrink:0,background:container?"#3b82f6":"transparent",border:`1.5px solid ${container?"#3b82f6":"rgba(255,255,255,0.25)"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
             {container&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
           </div>
-          <div><div style={{fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>Going into a container</div><div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",marginTop:1}}>Pot, bucket, bag, DWC, etc.</div></div>
+          <div><div style={{fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>{crop?.inContainer?"Changing container":"Going into a container"}</div><div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",marginTop:1}}>Pot, bucket, bag, DWC, etc.</div></div>
         </div>
         {container&&<input value={contSize} onChange={e=>setContSize(e.target.value)} placeholder="e.g. 5 gallon fabric pot..." style={{...iStyle,width:"100%"}}/>}
-        <button onClick={()=>{if(toLoc){onTransplant(crop.id,toLoc,date,container,contSize||"");onClose();}}} disabled={!toLoc||(container&&!contSize.trim())} style={{background:(!toLoc||(container&&!contSize.trim()))?"rgba(255,255,255,0.06)":C.green,color:(!toLoc||(container&&!contSize.trim()))?"rgba(232,245,233,0.25)":"white",border:"none",borderRadius:"12px",padding:"14px",fontSize:"0.92rem",fontWeight:700,cursor:(!toLoc||(container&&!contSize.trim()))?"not-allowed":"pointer"}}>Confirm Transplant</button>
+        {!hasChange&&<div style={{fontSize:"0.78rem",color:"rgba(232,245,233,0.3)",fontStyle:"italic",textAlign:"center"}}>Pick a new location or a new container to log this.</div>}
+        <button onClick={()=>{if(canSubmit){onTransplant(crop.id,toLoc||crop.location,date,container,contSize||"");onClose();}}} disabled={!canSubmit} style={{background:!canSubmit?"rgba(255,255,255,0.06)":C.green,color:!canSubmit?"rgba(232,245,233,0.25)":"white",border:"none",borderRadius:"12px",padding:"14px",fontSize:"0.92rem",fontWeight:700,cursor:!canSubmit?"not-allowed":"pointer"}}>{movingLoc?"Confirm Transplant":"Confirm Repot"}</button>
       </div>
     </DarkSheet>
   );
@@ -2389,14 +2410,140 @@ function MarkAllDoneSheet({show,location,crops,onMarkAllDone,onClose}) {
   );
 }
 
-// ── LocationActionSheet ────────────────────────────────────────
-function LocationActionSheet({show,location,crops,nutrients,sort,onSortChange,onClose,onWaterAll,onFeedAll,onMarkAllDone,onAddCrop}) {
+// ── TransplantAllSheet ─────────────────────────────────────────
+function TransplantAllSheet({show,location,crops,locations,onTransplantAll,onClose}) {
+  const [selected,setSelected]=useState({});
+  const [step,setStep]=useState("select"); // select -> destination -> confirm
+  const [toLoc,setToLoc]=useState("");
+  const [date,setDate]=useState(todayStr());
+  const [container,setContainer]=useState(false);
+  const [contSize,setContSize]=useState("");
+  const initSelected=()=>{const s={};(crops||[]).forEach(c=>{s[c.id]=true;});return s;};
+  useEffect(()=>{
+    if(!show){setSelected({});setStep("select");setToLoc("");setDate(todayStr());setContainer(false);setContSize("");}
+    else{setSelected(initSelected());}
+  },[show,crops?.length]);
+  const selectedIds=Object.entries(selected).filter(([,v])=>v).map(([id])=>id);
+  const selectedCrops=(crops||[]).filter(c=>selected[c.id]);
+  const allSelected=selectedIds.length===(crops||[]).length;
+  const otherLocations=(locations||[]).filter(l=>l!==location);
+  const iStyle={background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:"10px",padding:"11px 14px",fontSize:"16px",color:"white",outline:"none"};
+  if(!show) return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:450}} onClick={()=>{if(step==="select"){setSelected({});onClose();}}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+      <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:0,left:0,right:0,background:"#1a2b1c",borderRadius:"20px 20px 0 0",paddingBottom:"max(24px,env(safe-area-inset-bottom))",maxHeight:"85%",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"12px 0 0"}}>
+          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.2)"}}/>
+        </div>
+        {step==="select"&&(<>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 20px 10px"}}>
+            <div>
+              <div style={{fontSize:"1rem",fontWeight:700,color:"white"}}>Transplant All — {location}</div>
+              <div style={{fontSize:"0.75rem",color:"rgba(232,245,233,0.4)",marginTop:2}}>Uncheck any crops you want to skip</div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button onClick={()=>{if(allSelected){const s={};(crops||[]).forEach(c=>{s[c.id]=false;});setSelected(s);}else{setSelected(initSelected());}}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:"8px",padding:"5px 10px",fontSize:"0.75rem",fontWeight:600,color:"rgba(232,245,233,0.6)",cursor:"pointer"}}>{allSelected?"Deselect all":"Select all"}</button>
+              <button onClick={()=>{setSelected({});onClose();}} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:"50%",width:28,height:28,color:"rgba(232,245,233,0.6)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem"}}>✕</button>
+            </div>
+          </div>
+          <div style={{overflowY:"auto",padding:"0 20px 8px",display:"flex",flexDirection:"column",gap:8}}>
+            {(crops||[]).map(c=>{
+              const acc=cropAccent(c);
+              const isSelected=!!selected[c.id];
+              return(
+                <div key={c.id} onClick={()=>setSelected(s=>({...s,[c.id]:!s[c.id]}))} style={{display:"flex",alignItems:"center",gap:12,background:isSelected?"rgba(168,85,247,0.08)":"rgba(255,255,255,0.04)",borderRadius:"12px",padding:"12px 14px",border:`1px solid ${isSelected?"rgba(168,85,247,0.3)":"rgba(255,255,255,0.07)"}`,cursor:"pointer"}}>
+                  <div style={{width:22,height:22,borderRadius:6,background:isSelected?"#a855f7":"rgba(255,255,255,0.08)",border:`2px solid ${isSelected?"#a855f7":"rgba(255,255,255,0.2)"}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {isSelected&&<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </div>
+                  <div style={{width:3,height:32,borderRadius:2,background:`linear-gradient(to bottom,${acc.from},${acc.to})`,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:"0.62rem",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)"}}>{c.name}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{fontFamily:F.serif,fontStyle:"italic",fontSize:"0.92rem",color:"rgba(255,255,255,0.9)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.variety||c.name}</div>
+                      {c.label&&<span style={{flexShrink:0,fontWeight:700,fontSize:"0.6rem",color:C.green,background:"rgba(34,197,94,0.14)",border:"1px solid rgba(34,197,94,0.3)",padding:"1px 6px",borderRadius:"6px"}}>{c.label}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={()=>{if(selectedIds.length>0)setStep("destination");}} disabled={selectedIds.length===0} style={{marginTop:4,background:selectedIds.length===0?"rgba(255,255,255,0.06)":"#a855f7",border:"none",borderRadius:"14px",padding:"15px",fontSize:"0.95rem",fontWeight:700,color:selectedIds.length===0?"rgba(232,245,233,0.25)":"white",cursor:selectedIds.length===0?"not-allowed":"pointer"}}>
+              📦 Transplant {selectedIds.length} crop{selectedIds.length!==1?"s":""}
+            </button>
+          </div>
+        </>)}
+        {step==="destination"&&(()=>{
+          const movingLoc=!!toLoc;
+          const hasChange=movingLoc||(container&&contSize.trim());
+          const canNext=hasChange&&!(container&&!contSize.trim());
+          return(
+          <div style={{padding:"16px 20px 4px",display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{fontSize:"1rem",fontWeight:700,color:"white"}}>{selectedIds.length} crop{selectedIds.length!==1?"s":""} — what's changing?</div>
+            <div>
+              <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Move to <span style={{fontWeight:400,opacity:0.6}}>(optional — leave blank to stay put)</span></div>
+              <select value={toLoc} onChange={e=>setToLoc(e.target.value)} style={{...iStyle,width:"100%",appearance:"none",color:toLoc?"white":"rgba(232,245,233,0.3)"}}>
+                <option value="" style={{background:"#182218"}}>Stay in {location}</option>
+                {otherLocations.map(l=><option key={l} value={l} style={{background:"#182218"}}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:"0.72rem",fontWeight:600,color:"rgba(232,245,233,0.45)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Date</div>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...iStyle,width:"100%",colorScheme:"dark"}}/>
+            </div>
+            <div onClick={()=>setContainer(v=>!v)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:container?"rgba(59,130,246,0.08)":"rgba(255,255,255,0.04)",border:`1.5px solid ${container?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.1)"}`,borderRadius:"12px",cursor:"pointer"}}>
+              <div style={{width:20,height:20,borderRadius:"6px",flexShrink:0,background:container?"#3b82f6":"transparent",border:`1.5px solid ${container?"#3b82f6":"rgba(255,255,255,0.25)"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {container&&<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
+              <div><div style={{fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>{selectedCrops.length>0&&selectedCrops.every(c=>c.inContainer)?"Changing container":"Set container"}</div><div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",marginTop:1}}>Applies to all selected crops</div></div>
+            </div>
+            {container&&<input value={contSize} onChange={e=>setContSize(e.target.value)} placeholder="e.g. 5 gallon fabric pot..." style={{...iStyle,width:"100%"}}/>}
+            {!hasChange&&<div style={{fontSize:"0.78rem",color:"rgba(232,245,233,0.3)",fontStyle:"italic",textAlign:"center"}}>Pick a new location or a new container to continue.</div>}
+            <div style={{display:"flex",gap:10,marginBottom:8}}>
+              <button onClick={()=>setStep("select")} style={{flex:1,padding:"13px",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.6)",cursor:"pointer"}}>Back</button>
+              <button onClick={()=>{if(canNext)setStep("confirm");}} disabled={!canNext} style={{flex:1,padding:"13px",borderRadius:"12px",border:"none",background:!canNext?"rgba(255,255,255,0.06)":"#a855f7",fontSize:"0.9rem",fontWeight:700,color:!canNext?"rgba(232,245,233,0.25)":"white",cursor:!canNext?"not-allowed":"pointer"}}>Next</button>
+            </div>
+          </div>
+          );
+        })()}
+        {step==="confirm"&&(
+          <div style={{padding:"16px 20px 4px",display:"flex",flexDirection:"column",gap:14}}>
+            <div>
+              <div style={{fontSize:"1.05rem",fontWeight:700,color:"white",marginBottom:6}}>{toLoc?"Confirm transplant":"Confirm repot"}</div>
+              <div style={{fontSize:"0.85rem",color:"rgba(232,245,233,0.5)",lineHeight:1.5}}>
+                {toLoc
+                  ?<>{selectedIds.length} crop{selectedIds.length!==1?"s":""} will move from <strong style={{color:"white"}}>{location}</strong> to <strong style={{color:"white"}}>{toLoc}</strong> on {fmtDate(date)}{container&&contSize?` · ${contSize}`:""}.</>
+                  :<>{selectedIds.length} crop{selectedIds.length!==1?"s":""} will stay in <strong style={{color:"white"}}>{location}</strong>{container&&contSize?<> and move into <strong style={{color:"white"}}>{contSize}</strong></>:null} on {fmtDate(date)}.</>
+                }
+              </div>
+            </div>
+            <div style={{maxHeight:140,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+              {selectedCrops.map(c=>(
+                <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.04)",borderRadius:"9px",padding:"8px 11px"}}>
+                  <span style={{fontSize:"0.82rem",color:"rgba(232,245,233,0.85)",flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.variety||c.name}{c.label?` · ${c.label}`:""}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10,marginBottom:8}}>
+              <button onClick={()=>setStep("destination")} style={{flex:1,padding:"13px",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",fontSize:"0.9rem",fontWeight:600,color:"rgba(232,245,233,0.6)",cursor:"pointer"}}>Back</button>
+              <button onClick={()=>{onTransplantAll(selectedIds,toLoc||location,date,container,contSize||"");onClose();}} style={{flex:1,padding:"13px",borderRadius:"12px",border:"none",background:"#a855f7",fontSize:"0.9rem",fontWeight:700,color:"white",cursor:"pointer"}}>{toLoc?"📦 Confirm Transplant":"🪴 Confirm Repot"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function LocationActionSheet({show,location,crops,nutrients,locations,sort,onSortChange,onClose,onWaterAll,onFeedAll,onMarkAllDone,onTransplantAll,onAddCrop}) {
   const [showWaterAll,setShowWaterAll]=useState(false);
   const [showFeedAll,setShowFeedAll]=useState(false);
   const [showMarkAllDone,setShowMarkAllDone]=useState(false);
+  const [showTransplantAll,setShowTransplantAll]=useState(false);
+  const [moreOpen,setMoreOpen]=useState(false);
   const [wateredAll,setWateredAll]=useState(false);
   const locCrops=(crops||[]).filter(c=>!c.archived&&c.location===location);
-  useEffect(()=>{if(!show){setWateredAll(false);setShowWaterAll(false);setShowFeedAll(false);setShowMarkAllDone(false);}}, [show]);
+  useEffect(()=>{if(!show){setWateredAll(false);setShowWaterAll(false);setShowFeedAll(false);setShowMarkAllDone(false);setShowTransplantAll(false);setMoreOpen(false);}}, [show]);
   if(!show) return null;
   return(
     <>
@@ -2435,16 +2582,39 @@ function LocationActionSheet({show,location,crops,nutrients,sort,onSortChange,on
             <span style={{fontSize:"0.82rem",fontWeight:700,color:"#fbbf24"}}>Feed All</span>
           </button>
         </div>
-        <div style={{padding:"2px 20px 14px",display:"flex",justifyContent:"center"}}>
-          <button onClick={()=>setShowMarkAllDone(true)} style={{background:"none",border:"none",padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:"0.78rem",fontWeight:600,color:"rgba(232,245,233,0.35)",textDecoration:"underline",textUnderlineOffset:"2px"}}>Mark all as done…</span>
+        {/* More actions toggle */}
+        <div style={{padding:"4px 20px 0"}}>
+          <button onClick={()=>setMoreOpen(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"none",border:"none",padding:"10px",cursor:"pointer"}}>
+            <span style={{fontSize:"0.8rem",fontWeight:600,color:"rgba(232,245,233,0.4)"}}>More actions</span>
+            <span style={{color:"rgba(232,245,233,0.35)",fontSize:"0.75rem",display:"inline-block",transform:moreOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s"}}>▾</span>
           </button>
         </div>
+        {moreOpen&&(
+          <div style={{padding:"0 20px 16px",display:"flex",flexDirection:"column",gap:8}}>
+            <button onClick={()=>setShowTransplantAll(true)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",borderRadius:"14px",border:"1px solid rgba(168,85,247,0.25)",background:"rgba(168,85,247,0.08)",cursor:"pointer",textAlign:"left"}}>
+              <span style={{fontSize:"1.2rem",flexShrink:0}}>📦</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"0.85rem",fontWeight:700,color:"#c084fc"}}>Transplant All</div>
+                <div style={{fontSize:"0.7rem",color:"rgba(232,245,233,0.35)",marginTop:1}}>Move crops to another location</div>
+              </div>
+              <span style={{color:"rgba(255,255,255,0.25)",fontSize:"0.85rem"}}>›</span>
+            </button>
+            <button onClick={()=>setShowMarkAllDone(true)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",borderRadius:"14px",border:"1px solid rgba(255,255,255,0.08)",background:"rgba(255,255,255,0.03)",cursor:"pointer",textAlign:"left"}}>
+              <span style={{fontSize:"1.2rem",flexShrink:0}}>✓</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"0.85rem",fontWeight:700,color:"rgba(232,245,233,0.6)"}}>Mark All Done</div>
+                <div style={{fontSize:"0.7rem",color:"rgba(232,245,233,0.3)",marginTop:1}}>Archive crops in this location</div>
+              </div>
+              <span style={{color:"rgba(255,255,255,0.25)",fontSize:"0.85rem"}}>›</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
     <WaterAllSheet show={showWaterAll} location={location} crops={locCrops} onWaterAll={(selectedIds)=>{onWaterAll(selectedIds);setWateredAll(true);}} onClose={()=>setShowWaterAll(false)}/>
     <FeedAllSheet show={showFeedAll} location={location} crops={locCrops} nutrients={nutrients} onFeedAll={(nutrient,qty,water,date,selectedIds,schedDays,schedMeta)=>onFeedAll(selectedIds||locCrops.map(c=>c.id),nutrient,qty,water,date,schedDays,schedMeta)} onClose={()=>setShowFeedAll(false)}/>
     <MarkAllDoneSheet show={showMarkAllDone} location={location} crops={locCrops} onMarkAllDone={(selectedIds,finalNote)=>{onMarkAllDone&&onMarkAllDone(selectedIds,finalNote);onClose();}} onClose={()=>setShowMarkAllDone(false)}/>
+    <TransplantAllSheet show={showTransplantAll} location={location} crops={locCrops} locations={locations} onTransplantAll={(selectedIds,toLoc,date,inContainer,contSize)=>{onTransplantAll&&onTransplantAll(selectedIds,toLoc,date,inContainer,contSize);onClose();}} onClose={()=>setShowTransplantAll(false)}/>
     </>
   );
 }
@@ -3341,6 +3511,70 @@ function WeatherPanel({show,weatherData,location,loading,error,onRefresh,onSetti
 }
 
 // ── Report Panel ───────────────────────────────────────────────
+// ── ArchivedCropsSheet — focused archived list for a given year ─
+function ArchivedCropsSheet({show,year,crops,onRestore,onDeleteCrop,onClose}) {
+  if(!show) return null;
+  const inYear=d=>d&&d.startsWith(`${year}-`);
+  const archived=(crops||[]).filter(c=>c.archived&&(c.stageHistory||[]).length&&inYear(c.stageHistory[c.stageHistory.length-1].date))
+    .sort((a,b)=>{
+      const aDate=a.stageHistory?.[a.stageHistory.length-1]?.date||a.seedDate||"";
+      const bDate=b.stageHistory?.[b.stageHistory.length-1]?.date||b.seedDate||"";
+      return bDate.localeCompare(aDate);
+    });
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:320}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.65)"}}/>
+      <div style={{position:"absolute",bottom:"calc(max(80px, env(safe-area-inset-bottom) + 62px))",left:0,right:0,background:"#1a2b1c",borderRadius:"20px 20px 0 0",maxHeight:"calc(100% - max(120px, env(safe-area-inset-top) + 90px) - max(80px, env(safe-area-inset-bottom) + 62px))",display:"flex",flexDirection:"column",boxShadow:"0 -8px 30px rgba(0,0,0,0.4)"}}>
+        <div style={{padding:"16px 18px 14px",flexShrink:0,borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.2)",margin:"0 auto 14px"}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:"1.05rem",fontWeight:700,color:"white"}}>Archived — {year}</div>
+              <div style={{fontSize:"0.75rem",color:"rgba(232,245,233,0.4)",marginTop:2}}>{archived.length} crop{archived.length!==1?"s":""}</div>
+            </div>
+            <button onClick={onClose} style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"rgba(232,245,233,0.5)",fontSize:"1rem"}}>×</button>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"14px 18px 16px",display:"flex",flexDirection:"column",gap:10}}>
+          {archived.length===0&&<div style={{textAlign:"center",padding:"2rem",color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No archived crops for {year}.</div>}
+          {archived.map(c=>{
+            const acc=cropAccent(c);
+            const isLost=c.stage==="Lost";
+            const lastStageDate=c.stageHistory?.[c.stageHistory.length-1]?.date;
+            const ht=(()=>{const w=(c.harvests||[]).filter(h=>h.amount&&h.unit);if(!w.length)return null;const t={};w.forEach(h=>{t[h.unit]=(t[h.unit]||0)+Number(h.amount);});const top=Object.entries(t).sort((a,b)=>b[1]-a[1])[0];return`${Math.round(top[1]*100)/100} ${top[0]}`;})();
+            return(
+              <div key={c.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:"14px",padding:"14px",border:`1px solid ${isLost?"rgba(239,68,68,0.2)":"rgba(255,255,255,0.07)"}`,borderLeft:`3px solid ${acc.from}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:"0.58rem",fontWeight:700,letterSpacing:"0.1em",color:"rgba(255,255,255,0.3)",textTransform:"uppercase"}}>{c.name}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <div style={{fontFamily:F.serif,fontStyle:"italic",fontSize:"1rem",color:"rgba(255,255,255,0.9)",lineHeight:1.2}}>{c.variety||c.name}</div>
+                      {c.label&&<span style={{fontSize:"0.62rem",fontWeight:700,color:C.green,background:"rgba(34,197,94,0.14)",border:"1px solid rgba(34,197,94,0.3)",padding:"1px 7px",borderRadius:"6px"}}>{c.label}</span>}
+                    </div>
+                  </div>
+                  <span style={{background:isLost?"rgba(239,68,68,0.15)":"rgba(255,255,255,0.08)",color:isLost?"#fca5a5":"rgba(232,245,233,0.55)",fontSize:"0.68rem",fontWeight:700,padding:"3px 9px",borderRadius:"20px",flexShrink:0,marginLeft:8}}>
+                    {isLost?"🪦 Lost":"✅ Done"}
+                  </span>
+                </div>
+                <div style={{fontSize:"0.72rem",color:"rgba(232,245,233,0.35)",marginBottom:10}}>
+                  📍 {c.location}{ht?` · 🌾 ${ht}`:""}
+                  {lastStageDate&&<span> · {fmtDate(lastStageDate)}</span>}
+                </div>
+                {c.finalNote&&<div style={{fontSize:"0.78rem",color:"rgba(232,245,233,0.5)",fontStyle:"italic",marginBottom:10,lineHeight:1.4}}>"{c.finalNote}"</div>}
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>onRestore(c)} style={{flex:1,padding:"9px",borderRadius:"10px",border:`1px solid ${C.green}`,background:"rgba(34,197,94,0.1)",fontSize:"0.82rem",fontWeight:700,color:C.green,cursor:"pointer"}}>↺ Restore</button>
+                  <button onClick={()=>onDeleteCrop(c)} style={{flex:1,padding:"9px",borderRadius:"10px",border:"1px solid rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.08)",fontSize:"0.82rem",fontWeight:700,color:"#fca5a5",cursor:"pointer"}}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function ReportPanel({show,crops,onRestore,onDeleteCrop,onSettings,onClose,confirmDeleteArchived,setConfirmDeleteArchived,confirmRestore,setConfirmRestore}) {
   const [sec,setSec]=useState("overview");
   const [selYear,setSelYear]=useState(null);
@@ -4258,6 +4492,7 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
   const [flatSort,setFlatSort]       = useState("az");
   const [showHarvests,setShowHarvests] = useState(false);
   const [showSeasonSummary,setShowSeasonSummary] = useState(false);
+  const [showArchivedYear,setShowArchivedYear] = useState(null); // year number or null
   const [summaryYear,setSummaryYear] = useState(new Date().getFullYear());
   const [expandedWeatherDay,setExpandedWeatherDay] = useState(null);
   const [confirmDeleteSucc,setConfirmDeleteSucc]   = useState(null);
@@ -4640,7 +4875,10 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
       if(gardenId) for(const loc of newLocs) await db2.upsertLocation(gardenId,loc,true,locations.length);
     }
     const crop=crops.find(c=>c.id===id);
-    const noteText=`Transplanted from ${crop?.location||"?"} to ${toLoc} on ${fmtDate(date)}${inContainer&&containerSize?` · ${containerSize}`:""}`;
+    const samePlace=toLoc===crop?.location;
+    const noteText=samePlace
+      ? `Transplanted from ${crop?.location||"?"} to ${toLoc} on ${fmtDate(date)}${inContainer&&containerSize?` · upsized to ${containerSize}`:""}`
+      : `Transplanted from ${crop?.location||"?"} to ${toLoc} on ${fmtDate(date)}${inContainer&&containerSize?` · ${containerSize}`:""}`;
     const now=ts();
     const locId=gardenId?await db2.getLocationId(gardenId,toLoc):null;
     await db2.updateCrop(id,{location:toLoc,location_id:locId,transplantDate:date,inContainer,containerSize:containerSize||""});
@@ -4650,6 +4888,24 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
     const note={date:now,text:noteText,auto:true,_id:noteRow?.id};
     setCrops(cs=>cs.map(c=>{if(c.id!==id)return c;const sh=[...(c.stageHistory||[]),transplantEntry];return{...c,location:toLoc,transplantDate:date,inContainer,containerSize:containerSize||"",stageHistory:sh,notes:[...c.notes,note]};}));
     setSelCrop(p=>{if(!p||p.id!==id)return p;const sh=[...(p.stageHistory||[]),transplantEntry];return{...p,location:toLoc,transplantDate:date,inContainer,containerSize:containerSize||"",stageHistory:sh,notes:[...p.notes,note]};});
+  };
+  const transplantAll=async(ids,toLoc,date,inContainer,containerSize)=>{
+    const locId=gardenId?await db2.getLocationId(gardenId,toLoc):null;
+    await Promise.all(ids.map(async id=>{
+      const crop=crops.find(c=>c.id===id);
+      const samePlace=toLoc===crop?.location;
+      const noteText=samePlace
+        ? `Transplanted from ${crop?.location||"?"} to ${toLoc} on ${fmtDate(date)}${inContainer&&containerSize?` · upsized to ${containerSize}`:""}`
+        : `Transplanted from ${crop?.location||"?"} to ${toLoc} on ${fmtDate(date)}${inContainer&&containerSize?` · ${containerSize}`:""}`;
+      const now=ts();
+      await db2.updateCrop(id,{location:toLoc,location_id:locId,transplantDate:date,inContainer,containerSize:containerSize||""});
+      const shRow=await db2.addStageHistory(id,crop?.stage||"Seedling",date,{inContainer,containerSize:containerSize||null,locationId:locId,transplant:true});
+      const noteRow=await db2.addNote(id,now,noteText,true);
+      const transplantEntry={_id:shRow?.id,stage:crop?.stage||"Seedling",date,location_id:locId,inContainer,containerSize:containerSize||null,transplant:true};
+      const note={date:now,text:noteText,auto:true,_id:noteRow?.id};
+      setCrops(cs=>cs.map(c=>{if(c.id!==id)return c;const sh=[...(c.stageHistory||[]),transplantEntry];return{...c,location:toLoc,transplantDate:date,inContainer,containerSize:containerSize||"",stageHistory:sh,notes:[...c.notes,note]};}));
+      setSelCrop(p=>{if(!p||p.id!==id)return p;const sh=[...(p.stageHistory||[]),transplantEntry];return{...p,location:toLoc,transplantDate:date,inContainer,containerSize:containerSize||"",stageHistory:sh,notes:[...p.notes,note]};});
+    }));
   };
   const changeStage=async(id,stage,date)=>{
     const stageDate=date||t0;
@@ -4990,6 +5246,8 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
             const activeDuringYear=crops.filter(c=>c.seedDate&&c.seedDate<`${yr+1}-01-01`);
             const startedThisYear=crops.filter(c=>c.seedDate&&inYear(c.seedDate)).length;
             const lostThisYear=crops.filter(c=>c.stage==="Lost"&&(c.stageHistory||[]).some(s=>s.stage==="Lost"&&inYear(s.date))).length;
+            // Crops archived (Done or Lost) with their final stage change in this year
+            const archivedThisYear=crops.filter(c=>c.archived&&(c.stageHistory||[]).length&&inYear(c.stageHistory[c.stageHistory.length-1].date));
             // Water logs this year
             const totalWaterings=crops.reduce((n,c)=>{
               return n+(c.waterLog||[]).filter(w=>!w.auto&&inYear(w.date)).length;
@@ -5090,6 +5348,20 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
                             </div>
                           ))}
                         </div>
+
+                        {/* View archived crops for this year */}
+                        {archivedThisYear.length>0&&(
+                          <button onClick={()=>setShowArchivedYear(summaryYear)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"12px",padding:"12px 14px",cursor:"pointer"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:10}}>
+                              <span style={{fontSize:"1.1rem"}}>🗄</span>
+                              <span style={{fontSize:"0.88rem",fontWeight:600,color:"rgba(232,245,233,0.85)"}}>View archived crops</span>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontSize:"0.78rem",fontWeight:700,color:"rgba(134,239,172,0.7)",background:"rgba(34,197,94,0.12)",padding:"2px 9px",borderRadius:"10px"}}>{archivedThisYear.length}</span>
+                              <span style={{color:"rgba(255,255,255,0.25)",fontSize:"0.9rem"}}>›</span>
+                            </div>
+                          </button>
+                        )}
 
                         {/* Harvest breakdown */}
                         {harvestRows.length>0&&(
@@ -5204,13 +5476,14 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
         </div>
       )}
       {/* Location Action Sheet */}
-      <LocationActionSheet show={!!selLocSheet} location={selLocSheet} crops={crops} nutrients={nutrients}
+      <LocationActionSheet show={!!selLocSheet} location={selLocSheet} crops={crops} nutrients={nutrients} locations={locations}
         sort={locSorts[selLocSheet]||"az"}
         onSortChange={s=>setLocSorts(prev=>({...prev,[selLocSheet]:s}))}
         onClose={()=>setSelLocSheet(null)}
         onWaterAll={waterAll}
         onFeedAll={feedAll}
         onMarkAllDone={markAllDone}
+        onTransplantAll={transplantAll}
         onAddCrop={()=>{setSelLoc(selLocSheet);setSelLocSheet(null);navigate("addCrop");}}/>
 
       {/* Panels */}
@@ -5240,6 +5513,7 @@ Give ONE concise actionable recommendation (1-2 sentences max). Start with a rel
       <TodoPanel show={view==="todo"} crops={crops} todos={todos} onAddTodo={addTodo} onEditTodo={editTodo} onToggleTodo={toggleTodo} onDeleteTodo={deleteTodo} onLogFeed={logFeed} onDeleteSchedule={deleteSchedule} onCropTap={c=>{setSelCrop(c);setView("crop");}} onSuccessionSow={c=>{setEditCrop({...c,id:null,seedDate:todayStr(),stage:"Seed",startType:c.startType||"direct",successionDays:null,stageHistory:[],waterLog:[],feedLog:[],harvests:[],notes:[],feedSchedules:{}});setView("addCrop");}} onRemoveSuccession={async cropId=>{await db2.updateCrop(cropId,{successionDays:null});setCrops(cs=>cs.map(c=>c.id===cropId?{...c,successionDays:null}:c));}} onSettings={()=>setView("settings")} confirmDeleteSucc={confirmDeleteSucc} setConfirmDeleteSucc={setConfirmDeleteSucc} confirmFeedTodo={confirmFeedTodo} setConfirmFeedTodo={setConfirmFeedTodo} confirmDeleteTodo={confirmDeleteTodo} setConfirmDeleteTodo={setConfirmDeleteTodo} confirmDeleteFeedSched={confirmDeleteFeedSched} setConfirmDeleteFeedSched={setConfirmDeleteFeedSched} onClose={()=>setView("dashboard")}/>
       <WeatherPanel show={view==="weather"} weatherData={weatherData} location={weatherLocation} loading={weatherLoading} error={weatherError} onRefresh={()=>settings?.zip&&loadWeather(settings.zip)} onSettings={()=>setView("settings")} expandedDay={expandedWeatherDay} setExpandedDay={setExpandedWeatherDay} onClose={()=>setView("dashboard")}/>
       <ReportPanel show={view==="report"} crops={crops} onRestore={restoreCrop} onDeleteCrop={async id=>{await db2.deleteCrop(id);setCrops(cs=>cs.filter(c=>c.id!==id));}} onSettings={()=>setView("settings")} confirmDeleteArchived={confirmDeleteArchived} setConfirmDeleteArchived={setConfirmDeleteArchived} confirmRestore={confirmRestore} setConfirmRestore={setConfirmRestore} onClose={()=>setView("dashboard")}/>
+      <ArchivedCropsSheet show={!!showArchivedYear} year={showArchivedYear} crops={crops} onRestore={c=>setConfirmRestore(c)} onDeleteCrop={c=>setConfirmDeleteArchived(c)} onClose={()=>setShowArchivedYear(null)}/>
 
       {/* App-level sheets — outside panel stacking contexts, always above nav */}
       <DarkConfirmSheet show={!!confirmDeleteSucc} onClose={()=>setConfirmDeleteSucc(null)} title="Remove succession schedule?" message={confirmDeleteSucc?`This will turn off succession sowing for ${confirmDeleteSucc.crop.name}${confirmDeleteSucc.crop.variety?` · ${confirmDeleteSucc.crop.variety}`:""}. The existing crop will not be affected.`:""} confirmLabel="Remove Schedule" danger onConfirm={()=>{
